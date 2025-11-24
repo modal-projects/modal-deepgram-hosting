@@ -1,0 +1,14 @@
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/nova-3-general.es.batch.cb233499.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/entity-detector.en.streaming.90424f3a.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/nova-3-general.en.batch.2187e11a.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/nova-3-general.multi.batch.841d2347.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/entity-detector.batch.06bc8f36.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/nova-3-general.en.streaming.40bd3654.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/aura-2.voice-pack.en.15ef8614.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/aura-2.voice-pack.es.5d53d105.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/nova-3-general.multi.streaming.05d3e56e.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/aura-2.generator.es.4d5c93ad.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/diarizer.streaming.6ff6f59c.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/aura-2.generator.en.2e5096c7.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/nova-3-general.es.streaming.509be9b5.dg
+https://deepgram-self-hosted.s3.us-east-2.amazonaws.com/bb84d796-10c1-43b8-92ee-9b1384732608/models/diarizer.batch.a9f85c2b.dg

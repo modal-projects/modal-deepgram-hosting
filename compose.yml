@@ -1,0 +1,61 @@
+services:
+  # License Proxy - serves HTTPS on 8443
+  license-proxy:
+    image: quay.io/deepgram/self-hosted-license-proxy:release-251118
+    command: ["-vvvv", "serve", "/deepgram-config/license-proxy.toml"]
+    secrets:
+      - deepgram
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./configs/license-proxy.toml:/deepgram-config/license-proxy.toml
+    environment:
+      DEEPGRAM_DEPLOYMENT_ORCHESTRATOR: docker-compose
+
+  # Engine (Impeller) - serves HTTPS on 8080, metrics on 9991
+  engine:
+    image: quay.io/deepgram/self-hosted-engine:release-251118
+    entrypoint: ["/start-engine.sh"]
+    command: ["-vvvv", "serve", "/deepgram-config/engine.toml"]
+    secrets:
+      - deepgram
+    ports:
+      - "8080:8080"
+      - "9991:9991"
+    volumes:
+      - ./configs/engine.toml:/deepgram-config/engine.toml
+      - ./start-engine.sh:/start-engine.sh
+      - deepgram-models:/models
+    environment:
+      DEEPGRAM_DEPLOYMENT_ORCHESTRATOR: docker-compose
+    depends_on:
+      - license-proxy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # API (Stem) - serves HTTP on 8080
+  api:
+    image: quay.io/deepgram/self-hosted-api:release-251118
+    entrypoint: ["/start-api.sh"]
+    command: ["-vvvv", "serve", "/deepgram-config/api.toml"]
+    secrets:
+      - deepgram
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./configs/api.toml:/deepgram-config/api.toml
+      - ./start-api.sh:/start-api.sh
+    environment:
+      DEEPGRAM_DEPLOYMENT_ORCHESTRATOR: docker-compose
+    depends_on:
+      - engine
+      - license-proxy
+
+volumes:
+  deepgram-models:
+

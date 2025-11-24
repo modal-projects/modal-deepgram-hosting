@@ -1,0 +1,34 @@
+# API config for all-in-one deployment (localhost communication)
+# This is a copy of api.toml with localhost URLs
+
+[license]
+server_url = ["https://localhost:8443", "https://license.deepgram.com"]
+
+[server]
+base_url = "/v1"
+host = "0.0.0.0"
+port = 8080
+
+callback_conn_timeout = "1s"
+callback_timeout = "10s"
+fetch_conn_timeout = "1s"
+fetch_timeout = "60s"
+
+[features]
+topic_detection = true
+summarization = true
+entity_detection = false
+entity_redaction = true
+format_entity_tags = false
+speak_streaming = true
+redact_usage = true
+listen_v2 = false
+
+[[driver_pool.standard]]
+# Engine is on localhost since we're in the same container
+url = "https://localhost:8090/v2"  # Using 8090 to avoid conflict with API's 8080
+timeout_backoff = 1.2
+retry_sleep = "2s"
+retry_backoff = 1.6
+max_response_size = 1073741824
+
