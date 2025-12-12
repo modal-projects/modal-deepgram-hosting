@@ -17,6 +17,8 @@ base_url = "/v1"
 ### The IP address to listen on. Since this is likely running in a Docker
 ### container, you will probably want to listen on all interfaces.
 host = "0.0.0.0"
+### Only listen on localhost if using authentication
+# host = "127.0.0.1" 
 ### The port to listen on
 port = 8080
 
