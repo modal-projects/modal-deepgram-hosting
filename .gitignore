@@ -27,3 +27,6 @@ __old/**
 *.m4p
 *.m4v
 *.m4a
+
+# configs
+configs/**
