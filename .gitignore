@@ -8,3 +8,22 @@ wheels/
 
 # Virtual environments
 .venv
+
+# archived/old files
+__old/**
+
+# macos
+.DS_Store
+
+# audio files
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.flac
+*.wma
+*.aac
+*.m4b
+*.m4p
+*.m4v
+*.m4a

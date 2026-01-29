@@ -1,135 +1,321 @@
-# Deepgram Self-Hosted Deployment on Modal
+# Deepgram Self-Hosted on Modal
 
-This repository contains provides a sketch for deployment of Deepgram's self-hosted API and Engine on [Modal](https://modal.com).
+Deploy Deepgram's self-hosted Speech-to-Text (STT) and Text-to-Speech (TTS) services on [Modal](https://modal.com), a serverless GPU platform.
 
 ## Overview
 
+This repository provides infrastructure-as-code for deploying Deepgram's self-hosted API and Engine containers on Modal. Modal handles GPU provisioning, autoscaling, and networking, making it straightforward to run production Deepgram services without managing infrastructure directly.
+
+### Architecture
+
 Deepgram's self-hosted architecture consists of two main services:
-- **Engine (Impeller)**: GPU-powered inference service that performs speech-to-text processing
-- **API (Stem)**: Public-facing HTTP API that receives requests and forwards them to the Engine
 
-## Handling mTLS
+- **Engine (Impeller)**: GPU-powered inference service that performs speech processing
+- **API (Stem)**: HTTP API that receives requests and forwards them to the Engine
 
-Deepgram's Engine requires **mutual TLS (mTLS) authentication** for security. This means the Engine serves HTTPS and expects clients to present a valid client certificate. However, trying to implement this with standard Modal web endpoints results in TLS termination before the Engine sees requests from the API container.
-
-### Unencrypted Tunnels
-
-This deployment uses Modal's **unencrypted tunnels** to properly handle this mTLS contraint. Modal's unencrypted tunnels provide raw TCP passthrough without TLS termination, allowing the API to present its client certificate directly to the Engine for mTLS authentication.
+This deployment runs both services in a single Modal container, communicating over localhost. The API is exposed via Modal's web server infrastructure, while the Engine handles GPU inference internally.
 
 ## Prerequisites
 
-### 1. Modal Account and CLI
+### Modal Account and CLI
+
+1. Create a [Modal account](https://modal.com) if you don't have one
+2. Install the Modal CLI and authenticate:
+
 ```bash
 pip install modal
 modal setup
 ```
 
-### 2. Deepgram Credentials
-You need a Deepgram API key. Create a Modal secret:
+### Deepgram Self-Hosted Credentials
+
+You need the following credentials from Deepgram:
+
+- **API Key**: Your self-hosted API key secret (created in the API Key tab of Deepgram Console)
+- **Container Registry Credentials**: Username and password for pulling images from `quay.io/deepgram`
+- **Model Links**: URLs to download your licensed model files
+
+See [Self Service Licensing & Credentials](https://developers.deepgram.com/docs/self-hosted-self-service-tutorial) for instructions on generating these credentials.
+
+## Setup
+
+### 1. Clone This Repository
+
 ```bash
-modal secret create deepgram DEEPGRAM_API_KEY=<your-key>
-modal secret create deepgram REGISTRY_PASSWORD=<your-passowrd>
-modal secret create deepgram REGISTRY_USERNAME=<your-username>
+git clone https://github.com/your-org/modal-deepgram-hosting.git
+cd modal-deepgram-hosting
 ```
 
-### 3. Model Files
-Download Deepgram model files and upload them to a Modal volume named `deepgram-models`:
+### 2. Create Modal Secret
+
+Create a Modal secret containing your Deepgram credentials:
+
 ```bash
-# Use the download_models.py script (if available) or manually download models
-# Then upload to Modal volume
-modal volume put deepgram-models /path/to/models /models
+modal secret create deepgram \
+  DEEPGRAM_API_KEY=<your-api-key-secret> \
+  REGISTRY_USERNAME=<your-quay-username> \
+  REGISTRY_PASSWORD=<your-quay-password>
 ```
 
-### 4. Configuration Files
-Upload the configuration files from the `configs/` directory to a Modal volume named `deepgram-config`:
+> **Note**: The `REGISTRY_USERNAME` and `REGISTRY_PASSWORD` are your container image distribution credentials from Deepgram Console, used to pull images from `quay.io/deepgram`.
+
+### 3. Add Model Links
+
+Create a file containing URLs to your Deepgram model files. Deepgram provides these links based on your license. This file can be created anywhere—you'll pass its path to the prepare command.
+
+```text
+https://LINK_TO_MODEL_1.dg
+https://LINK_TO_MODEL_2.dg
+https://LINK_TO_MODEL_3.dg
+```
+
+> **Note**: This repository includes example model link files at `configs/stt/model_links.txt` and `configs/tts/model_links.txt`, but you can use any file path.
+
+## Prepare Deployment
+
+### Initial Setup
+
+Before deploying for the first time, you must prepare the required resources on Modal volumes. Run `prepare_resources` **once per deployment type**—each `--label` corresponds to a separate deployment (e.g., `stt`, `tts`, `tts-spanish`).
+
+#### Prepare STT Resources
+
 ```bash
-modal volume create deepgram-config
-modal volume put deepgram-config configs/api.toml /deepgram-config/api.toml
-modal volume put deepgram-config configs/engine.toml /deepgram-config/engine.toml
+modal run modal_deepgram/utils/modal_resources.py \
+  --label stt \
+  --model-links-path /path/to/stt_model_links.txt \
+  --source-api-config-file api.toml \
+  --source-engine-config-file engine.toml
 ```
 
-## Configuration Files
+#### Prepare TTS Resources
 
-### `configs/api.toml`
-Configures the Deepgram API service:
-- **Server settings**: Port 8080, listens on all interfaces
-- **License validation**: Points to `https://license.deepgram.com`
-- **Driver pool**: Specifies the Engine URL (dynamically updated by deployment script)
-- **Features**: Enable/disable topic detection, summarization, entity detection, etc.
-- **Concurrency**: Request limits and disk buffering options
-
-**Key configuration** (line 117):
-```toml
-[[driver_pool.standard]]
-url = "https://engine:8080/v2"  # Updated at runtime to tunnel URL
-```
-
-### `configs/engine.toml`
-Configures the Deepgram Engine service:
-- **Server settings**: Port 8080, HTTPS with mTLS
-- **Model paths**: Points to `/models` volume
-- **License validation**: Points to `https://license.deepgram.com`
-- **Features**: Multichannel, language detection, NER, etc.
-- **GPU settings**: Half precision mode (auto-detected)
-- **Performance**: Chunking, concurrency, and health checks
-
-### `configs/license-proxy.toml`
-**Note**: This file is included for reference but is **not used** in the current deployment. License validation is performed directly against `https://license.deepgram.com` without a local proxy.
-
-## Deployment
-
-This repository contains two separate Modal apps that must be deployed independently:
-
-### Step 1: Deploy the Engine
 ```bash
-modal deploy deploy_deepgram.py::engine_app
+modal run modal_deepgram/utils/modal_resources.py \
+  --label tts \
+  --model-links-path /path/to/tts_model_links.txt \
+  --source-api-config-file api.aura-2-polyglot.toml \
+  --source-engine-config-file engine.aura-2-polyglot.toml
 ```
 
-This will:
-- Create a GPU-powered container (L4) running the Deepgram Engine
-- Start the Engine binary (`impeller`) serving HTTPS on port 8080
-- Create an unencrypted tunnel for raw TCP passthrough
-- Expose a web endpoint that provides tunnel connection information
+#### Options
 
-### Step 2: Deploy the API
+| Option | Description |
+|--------|-------------|
+| `--label` | Label for organizing configs/models (e.g., `stt`, `tts`) |
+| `--model-links-path` | Path to file containing model download URLs |
+| `--source-api-config-file` | Name of API config file to download (see below) |
+| `--source-engine-config-file` | Name of Engine config file to download (see below) |
+| `--deploy-type` | Deployment type: `standard` (default) or `license-proxy` |
+
+The `--source-api-config-file` and `--source-engine-config-file` arguments specify config file names from Deepgram's self-hosted-resources repository:
+
+- **Standard deployment**: [common/standard_deploy](https://github.com/deepgram/self-hosted-resources/tree/main/common/standard_deploy)
+- **License proxy deployment**: [common/license_proxy_deploy](https://github.com/deepgram/self-hosted-resources/tree/main/common/license_proxy_deploy)
+
+For TTS deployments (e.g., Aura-2), you may need language-specific config files like `api.aura-2-en.toml` and `engine.aura-2-en.toml`.
+
+#### What This Does
+
+The `prepare_resources` command performs three operations:
+
+1. **Downloads Config Files**: Fetches the specified config files from Deepgram's [self-hosted-resources repository](https://github.com/deepgram/self-hosted-resources) and saves them to a Modal volume at `/cache/configs/{label}/`
+
+2. **Downloads Model Files**: Downloads all model files (`.dg`) from your model links file to a Modal volume at `/models/{label}/`
+
+3. **Extracts API Binary**: Extracts the `stem` binary from the Deepgram API container image and caches it at `/cache/binary/stem`
+
+### Update Configuration
+
+To update an existing deployment's configuration, edit the config files stored on the Modal volume. This does not require re-running `prepare_resources`.
+
+#### Edit Config Files
+
+Use the Modal CLI to download, edit, and re-upload config files:
+
 ```bash
-modal deploy deploy_deepgram.py::api_app
+# Download config files locally
+modal volume get deepgram-cache configs/stt/api.toml ./api.toml
+modal volume get deepgram-cache configs/stt/engine.toml ./engine.toml
+
+# Edit the files locally with your preferred editor
+vim api.toml
+vim engine.toml
+
+# Upload modified files back to the volume
+modal volume put deepgram-cache ./api.toml configs/stt/api.toml
+modal volume put deepgram-cache ./engine.toml configs/stt/engine.toml
 ```
 
-This will:
-- Create a container running the Deepgram API
-- Fetch the Engine's tunnel URL from the deployed Engine app
-- Update the API configuration to connect to the Engine via the unencrypted tunnel
-- Start the API binary (`stem`) serving HTTP on port 8080
-- Expose a public web endpoint for API requests
+After updating config files, redeploy the service to apply changes:
 
-**API startup delay**: While the Engine is staring up, you will see request errors in the API container. These are normal and will stop once the Engine container is running and the API is able to connect.
-
-## Usage
-
-After deployment, you'll receive a URL for the API endpoint:
-```
-https://{workspace}-{environment}--deepgram-api-api.modal.run
-```
-
-### Test the API
-
-#### Check Status
 ```bash
-curl https://{workspace}-{environment}--deepgram-api-api.modal.run/v1/status
+modal deploy -m modal_deepgram.deployments.stt
 ```
 
-#### List Available Models
+See the [Deepgram configuration documentation](https://developers.deepgram.com/docs/deploy-stt-services) for complete configuration options.
+
+## Deploy on Modal
+
+### Deploy STT Service
+
 ```bash
-curl https://{workspace}-{environment}--deepgram-api-api.modal.run/v1/models
+modal deploy -m modal_deepgram.deployments.stt
 ```
 
-#### Transcribe Audio
+### Deploy TTS Service
+
 ```bash
-curl \                                          
+modal deploy -m modal_deepgram.deployments.tts
+```
+
+After deployment, Modal will output the service URL, e.g.:
+
+```
+https://{workspace}-{env}--deepgram-stt-deepgramstt-web-server.modal.run
+```
+
+## Test Your Deployment
+
+### Check Status
+
+```bash
+curl https://{your-modal-url}/v1/status
+```
+
+### List Available Models
+
+```bash
+curl https://{your-modal-url}/v1/models
+```
+<!-- 
+### Transcribe Audio (STT)
+
+```bash
+curl \
   --request POST \
-  --header 'Authorization: Token a' \
   --header 'Content-Type: application/json' \
   --data '{"url":"https://dpgr.am/spacewalk.wav"}' \
-  --url 'https://{workspace}-{environment}--deepgram-api-api.modal.run/v1/listen?model=nova-3'
+  --url 'https://{your-modal-url}/v1/listen?model=nova-3'
 ```
+
+### Synthesize Speech (TTS)
+
+```bash
+curl \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --output speech.wav \
+  --data '{"text":"Hello, this is a test of Deepgram text to speech."}' \
+  --url 'https://{your-modal-url}/v1/speak?model=aura-2-thalia-en'
+```
+
+## Customize Deployment
+
+### Hardware Configuration
+
+Hardware settings are defined in `modal_deepgram/utils/const.py`:
+
+```python
+# STT Hardware
+STT_CPU_COUNT = 4
+STT_MEMORY = 32 * 1024  # 32 GB
+STT_GPU = "L4"
+
+# TTS Hardware (requires more resources)
+TTS_CPU_COUNT = 8
+TTS_MEMORY = 64 * 1024  # 64 GB
+TTS_GPU = "L4:2"  # 2x L4 GPUs
+```
+
+Available GPU options on Modal include:
+- `T4` - Budget option, suitable for light workloads
+- `L4` - Recommended for STT (good balance of price/performance)
+- `L4:2` - Recommended for TTS (dual GPU requirement)
+- `A10G` - Higher performance option
+- `A100` - Maximum performance for high-throughput workloads
+
+### Autoscaling
+
+Autoscaling is configured in the deployment files (`stt.py` / `tts.py`):
+
+```python
+@app.cls(
+    # ...
+    min_containers=1,  # Keep at least 1 container warm
+)
+@modal.concurrent(target_inputs=40, max_inputs=70)
+class DeepgramSTT(DeepgramAPIandEngine):
+    ...
+```
+
+| Setting | Description |
+|---------|-------------|
+| `min_containers` | Minimum warm containers (avoids cold starts) |
+| `target_inputs` | Target concurrent requests per container for scaling |
+| `max_inputs` | Maximum concurrent requests before queuing |
+
+> **Tip**: Deepgram recommends keeping at least 1 container warm (`min_containers=1`) to avoid cold start latency on the first request.
+
+### Networking & Security
+
+Modal handles TLS termination and provides HTTPS endpoints automatically. The deployment exposes the Deepgram API on port 8080 via Modal's web server infrastructure.
+
+**Authentication**: By default, the Deepgram API accepts any request. To add authentication:
+
+1. Configure `[server.auth]` in `api.toml` 
+2. Or implement authentication at the application layer before calling the Deepgram endpoint
+
+**Private Deployments**: For private/internal deployments, consider:
+- Using Modal's [custom domains](https://modal.com/docs/guide/webhooks#custom-domains)
+- Implementing authentication middleware
+- Deploying behind your own proxy/load balancer -->
+
+## Volumes
+
+This deployment uses two Modal volumes:
+
+| Volume | Mount Path | Contents |
+|--------|------------|----------|
+| `deepgram-models` | `/models` | Model files (`.dg`) organized by label |
+| `deepgram-cache` | `/cache` | Config files and extracted binaries |
+
+To inspect volume contents:
+
+```bash
+modal volume ls deepgram-models
+modal volume ls deepgram-cache
+```
+
+<!-- ## Troubleshooting
+
+### Container Startup Issues
+
+Check container logs in the Modal dashboard or via CLI:
+
+```bash
+modal app logs deepgram-stt
+```
+
+### License Validation Errors
+
+- Verify `DEEPGRAM_API_KEY` is correctly set in your Modal secret
+- Ensure your API key has self-hosted permissions
+- Check that the container can reach `license.deepgram.com` on port 443
+
+### Model Loading Errors
+
+- Verify models were downloaded correctly: `modal volume ls deepgram-models`
+- Check that `search_paths` in `engine.toml` matches your label directory
+- Ensure model files are compatible with your license
+
+### GPU Not Detected
+
+- Verify you're using a GPU-enabled Modal function
+- Check `gpu_required = true` in `engine.toml` to fail fast if no GPU is available -->
+
+## Additional Resources
+
+- [Deepgram Self-Hosted Documentation](https://developers.deepgram.com/docs/self-hosted-deployment-environments)
+- [Deploy STT Services](https://developers.deepgram.com/docs/deploy-stt-services)
+- [Deploy TTS Services](https://developers.deepgram.com/docs/deploy-tts-services)
+- [Modal Documentation](https://modal.com/docs)
