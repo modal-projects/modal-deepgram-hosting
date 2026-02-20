@@ -80,7 +80,7 @@ Before deploying for the first time, you must prepare the required resources on 
 #### Prepare STT Resources
 
 ```bash
-modal run modal_deepgram/utils/modal_resources.py \
+modal run -m modal_deepgram.utils.modal_resources \
   --label stt \
   --model-links-path /path/to/stt_model_links.txt \
   --source-api-config-file api.toml \
@@ -90,7 +90,7 @@ modal run modal_deepgram/utils/modal_resources.py \
 #### Prepare TTS Resources
 
 ```bash
-modal run modal_deepgram/utils/modal_resources.py \
+modal run -m modal_deepgram.utils.modal_resources \
   --label tts \
   --model-links-path /path/to/tts_model_links.txt \
   --source-api-config-file api.aura-2-polyglot.toml \
