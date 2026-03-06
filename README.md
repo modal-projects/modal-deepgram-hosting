@@ -69,13 +69,27 @@ https://LINK_TO_MODEL_2.dg
 https://LINK_TO_MODEL_3.dg
 ```
 
-> **Note**: This repository includes example model link files at `configs/stt/model_links.txt` and `configs/tts/model_links.txt`, but you can use any file path.
-
 ## Prepare Deployment
 
 ### Initial Setup
 
-Before deploying for the first time, you must prepare the required resources on Modal volumes. Run `prepare_resources` **once per deployment type**—each `--label` corresponds to a separate deployment (e.g., `stt`, `tts`, `tts-spanish`).
+Before deploying for the first time, you must prepare the required resources on Modal volumes. Run `prepare_resources` **once per deployment type** — each `--label` corresponds to a separate deployment (e.g., `stt`, `tts`, `tts-spanish`).
+
+| Option | Description |
+|--------|-------------|
+| `--label` | Label for organizing configs/models (e.g., `stt`, `tts`) |
+| `--model-links-path` | Path to file containing model download URLs |
+| `--source-api-config-file` | Name of API config file to download (see below) |
+| `--source-engine-config-file` | Name of Engine config file to download (see below) |
+| `--deploy-type` | Deployment type: `standard` (default) or `license-proxy` |
+
+The `--source-api-config-file` and `--source-engine-config-file` arguments specify config file names from Deepgram's self-hosted-resources repository:
+
+- **Standard deployment**: [common/standard_deploy](https://github.com/deepgram/self-hosted-resources/tree/main/common/standard_deploy)
+- **License proxy deployment**: [common/license_proxy_deploy](https://github.com/deepgram/self-hosted-resources/tree/main/common/license_proxy_deploy)
+
+For TTS deployments (e.g., Aura-2), you may need language-specific config files like `api.aura-2-en.toml` and `engine.aura-2-en.toml`.
+ The config file names should correspond to the `.toml` file name from the standard deployment configs on the Deepgram `self-hosted-resources` [repo](https://github.com/deepgram/self-hosted-resources/tree/main/common/standard_deploy).
 
 #### Prepare STT Resources
 
@@ -96,23 +110,6 @@ modal run modal_deepgram/utils/modal_resources.py \
   --source-api-config-file api.aura-2-polyglot.toml \
   --source-engine-config-file engine.aura-2-polyglot.toml
 ```
-
-#### Options
-
-| Option | Description |
-|--------|-------------|
-| `--label` | Label for organizing configs/models (e.g., `stt`, `tts`) |
-| `--model-links-path` | Path to file containing model download URLs |
-| `--source-api-config-file` | Name of API config file to download (see below) |
-| `--source-engine-config-file` | Name of Engine config file to download (see below) |
-| `--deploy-type` | Deployment type: `standard` (default) or `license-proxy` |
-
-The `--source-api-config-file` and `--source-engine-config-file` arguments specify config file names from Deepgram's self-hosted-resources repository:
-
-- **Standard deployment**: [common/standard_deploy](https://github.com/deepgram/self-hosted-resources/tree/main/common/standard_deploy)
-- **License proxy deployment**: [common/license_proxy_deploy](https://github.com/deepgram/self-hosted-resources/tree/main/common/license_proxy_deploy)
-
-For TTS deployments (e.g., Aura-2), you may need language-specific config files like `api.aura-2-en.toml` and `engine.aura-2-en.toml`.
 
 #### What This Does
 
