@@ -8,12 +8,18 @@ This repository provides infrastructure-as-code for deploying Deepgram's self-ho
 
 ### Architecture
 
-Deepgram's self-hosted architecture consists of two main services:
+Deepgram's self-hosted architecture consists of three services:
 
 - **Engine (Impeller)**: GPU-powered inference service that performs speech processing
 - **API (Stem)**: HTTP API that receives requests and forwards them to the Engine
+- **License Proxy (Hermes)**: Caching proxy for license validation that enables high availability (optional but recommended for production)
 
-This deployment runs both services in a single Modal container, communicating over localhost. The API is exposed via Modal's web server infrastructure, while the Engine handles GPU inference internally.
+This deployment runs all services in a single Modal container, communicating over localhost. The API is exposed via Modal's web server infrastructure, while the Engine and License Proxy handle GPU inference and license validation internally.
+
+Two deployment types are supported:
+
+- **Standard**: Engine and API validate licenses directly against `license.deepgram.com`
+- **License Proxy**: A local License Proxy handles license validation, allowing the deployment to continue operating even if connectivity to Deepgram's license server is temporarily lost
 
 ## Prerequisites
 
@@ -81,7 +87,7 @@ Before deploying for the first time, you must prepare the required resources on 
 | `--model-links-path` | Path to file containing model download URLs |
 | `--source-api-config-file` | Name of API config file to download (see below) |
 | `--source-engine-config-file` | Name of Engine config file to download (see below) |
-| `--deploy-type` | Deployment type: `standard` (default) or `license-proxy` |
+| `--deploy-type` | Deployment type: `license-proxy` (default) or `standard` |
 
 The `--source-api-config-file` and `--source-engine-config-file` arguments specify config file names from Deepgram's self-hosted-resources repository:
 
@@ -94,7 +100,7 @@ For TTS deployments (e.g., Aura-2), you may need language-specific config files 
 #### Prepare STT Resources
 
 ```bash
-modal run modal_deepgram/utils/modal_resources.py \
+modal run -m modal_deepgram.utils.modal_resources \
   --label stt \
   --model-links-path /path/to/stt_model_links.txt \
   --source-api-config-file api.toml \
@@ -104,22 +110,40 @@ modal run modal_deepgram/utils/modal_resources.py \
 #### Prepare TTS Resources
 
 ```bash
-modal run modal_deepgram/utils/modal_resources.py \
+modal run -m modal_deepgram.utils.modal_resources \
   --label tts \
   --model-links-path /path/to/tts_model_links.txt \
   --source-api-config-file api.aura-2-polyglot.toml \
   --source-engine-config-file engine.aura-2-polyglot.toml
 ```
 
+#### Prepare without License Proxy
+
+To deploy without a local License Proxy (license validation goes directly to `license.deepgram.com`):
+
+```bash
+modal run -m modal_deepgram.utils.modal_resources \
+  --label stt \
+  --model-links-path /path/to/stt_model_links.txt \
+  --source-api-config-file api.toml \
+  --source-engine-config-file engine.toml \
+  --deploy-type standard
+```
+
 #### What This Does
 
-The `prepare_resources` command performs three operations:
+The `prepare_resources` command performs these operations:
 
-1. **Downloads Config Files**: Fetches the specified config files from Deepgram's [self-hosted-resources repository](https://github.com/deepgram/self-hosted-resources) and saves them to a Modal volume at `/cache/configs/{label}/`
+1. **Downloads Config Files**: Fetches the specified config files from Deepgram's [self-hosted-resources repository](https://github.com/deepgram/self-hosted-resources), patches them for single-container deployment (localhost networking, port assignments), and saves them to a Modal volume at `/cache/configs/{label}/`
 
 2. **Downloads Model Files**: Downloads all model files (`.dg`) from your model links file to a Modal volume at `/models/{label}/`
 
-3. **Extracts API Binary**: Extracts the `stem` binary from the Deepgram API container image and caches it at `/cache/binary/stem`
+3. **Extracts Binaries**: Extracts the `stem` (API) binary from the Deepgram API container image and caches it at `/cache/binary/stem`. For `license-proxy` deployments, also extracts the `hermes` (License Proxy) binary to `/cache/binary/hermes`
+
+The config patching automatically handles the following for single-container deployment:
+- Rewrites Engine and API driver URLs to use `localhost`
+- For `standard` deploys: removes the License Proxy from `server_url`, pointing directly to `license.deepgram.com`
+- For `license-proxy` deploys: rewrites `server_url` to use the local License Proxy at `localhost:8443`, and adjusts the License Proxy status port to `8089` to avoid conflicting with the API on port `8080`
 
 ### Update Configuration
 
@@ -133,6 +157,8 @@ Use the Modal CLI to download, edit, and re-upload config files:
 # Download config files locally
 modal volume get deepgram-cache configs/stt/api.toml ./api.toml
 modal volume get deepgram-cache configs/stt/engine.toml ./engine.toml
+# For license-proxy deployments:
+# modal volume get deepgram-cache configs/stt/license-proxy.toml ./license-proxy.toml
 
 # Edit the files locally with your preferred editor
 vim api.toml
@@ -156,13 +182,13 @@ See the [Deepgram configuration documentation](https://developers.deepgram.com/d
 ### Deploy STT Service
 
 ```bash
-modal deploy -m modal_deepgram.deployments.stt
+modal deploy -m modal_deepgram.deployments.web_server.stt
 ```
 
 ### Deploy TTS Service
 
 ```bash
-modal deploy -m modal_deepgram.deployments.tts
+modal deploy -m modal_deepgram.deployments.web_server.tts
 ```
 
 After deployment, Modal will output the service URL, e.g.:
@@ -241,7 +267,7 @@ Autoscaling is configured in the deployment files (`stt.py` / `tts.py`):
     min_containers=1,  # Keep at least 1 container warm
 )
 @modal.concurrent(target_inputs=40, max_inputs=70)
-class DeepgramSTT(DeepgramAPIandEngine):
+class DeepgramSTT(DeepgramSingleContainer):
     ...
 ```
 
@@ -274,7 +300,7 @@ This deployment uses two Modal volumes:
 | Volume | Mount Path | Contents |
 |--------|------------|----------|
 | `deepgram-models` | `/models` | Model files (`.dg`) organized by label |
-| `deepgram-cache` | `/cache` | Config files and extracted binaries |
+| `deepgram-cache` | `/cache` | Config files and extracted binaries (`stem`, `hermes`) |
 
 To inspect volume contents:
 
@@ -315,4 +341,5 @@ modal app logs deepgram-stt
 - [Deepgram Self-Hosted Documentation](https://developers.deepgram.com/docs/self-hosted-deployment-environments)
 - [Deploy STT Services](https://developers.deepgram.com/docs/deploy-stt-services)
 - [Deploy TTS Services](https://developers.deepgram.com/docs/deploy-tts-services)
+- [License Proxy](https://developers.deepgram.com/docs/license-proxy)
 - [Modal Documentation](https://modal.com/docs)

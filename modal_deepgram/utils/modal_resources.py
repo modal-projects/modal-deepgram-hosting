@@ -13,7 +13,17 @@ cache_vol = modal.Volume.from_name(CACHE_VOL_NAME, create_if_missing=True)
 # API image for extracting stem binary
 api_image = (
     modal.Image.from_registry(
-        "quay.io/deepgram/self-hosted-api:release-251118",
+        "quay.io/deepgram/self-hosted-api:release-260319",
+        secret=modal.Secret.from_name("deepgram"),
+        add_python="3.12",
+    )
+    .entrypoint([])
+)
+
+# License proxy image for extracting hermes binary
+license_proxy_image = (
+    modal.Image.from_registry(
+        "quay.io/deepgram/self-hosted-license-proxy:release-260319",
         secret=modal.Secret.from_name("deepgram"),
         add_python="3.12",
     )
@@ -32,15 +42,25 @@ class StemExtractor:
         with open("/bin/stem", "rb") as f:
             return f.read()
 
+
+@app.cls(image=license_proxy_image, secrets=[modal.Secret.from_name("deepgram")])
+class LicenseProxyExtractor:
+    """Extract hermes binary from license proxy image"""
+    
+    @modal.method()
+    def get_hermes_binary(self):
+        """Read and return the hermes (license proxy) binary"""
+        with open("/bin/hermes", "rb") as f:
+            return f.read()
+
 # Use Engine image as base (has GPU/CUDA dependencies)
 engine_base_image = (
     modal.Image.from_registry(
-        "quay.io/deepgram/self-hosted-engine:release-251118",
+        "quay.io/deepgram/self-hosted-engine:release-260319",
         secret=modal.Secret.from_name("deepgram"),
-        add_python="3.12",
     )
-    .pip_install("fastapi[standard]", "httpx")  # Required for web endpoints and health checks
-    .entrypoint([])  # Clear default entrypoint
+    .uv_pip_install("fastapi[standard]", "httpx")
+    .entrypoint([])
 )
 
 MINUTES = 60
@@ -150,7 +170,7 @@ def download_configs(
     label: str,
     api_config_file: str = "api.toml",
     engine_config_file: str = "engine.toml",
-    deploy_type: str = "standard",
+    deploy_type: str = "license-proxy",
     destination: str = "/mnt/cache/configs",
 ) -> dict[str, bool]:
     """
@@ -216,59 +236,72 @@ def download_configs(
             print(f"✗ Error downloading {remote_file}: {e}")
             results[local_file] = False
     
-    # Post-process api.toml to update engine URL for local deployment
+    # Post-process configs for single-container deployment where all services
+    # run on localhost. The upstream configs assume multi-container Docker networking
+    # (e.g. hostname "engine", "license-proxy") which we replace with localhost.
     import re
+
+    # --- api.toml ---
     api_toml_path = dest_path / "api.toml"
     if api_toml_path.exists():
         content = api_toml_path.read_text()
-        # Match url = "https://<anything>:8080/v2" and replace with localhost:8081
-        updated_content = re.sub(
+        # Engine runs on localhost:8081 instead of a separate container on :8080
+        content = re.sub(
             r'url = "https://[^:]+:8080/v2"',
             'url = "https://localhost:8081/v2"',
-            content
+            content,
         )
-        
-        # For standard (standalone) deployment, remove license-proxy from server_url
         if deploy_type == "standard":
-            updated_content = updated_content.replace(
+            content = content.replace(
                 'server_url = ["https://license-proxy:8443", "https://license.deepgram.com"]',
-                'server_url = ["https://license.deepgram.com"]'
+                'server_url = ["https://license.deepgram.com"]',
             )
-            print("✓ Updated api.toml: server_url changed to direct license server")
-        
-        api_toml_path.write_text(updated_content)
-        print("✓ Updated api.toml: engine URL changed to localhost:8081")
-    
-    # Post-process engine.toml to update server host/port for local deployment
+        elif deploy_type == "license-proxy":
+            content = content.replace(
+                "https://license-proxy:8443",
+                "https://localhost:8443",
+            )
+        api_toml_path.write_text(content)
+        print("✓ Patched api.toml for single-container deployment")
+
+    # --- engine.toml ---
     engine_toml_path = dest_path / "engine.toml"
     if engine_toml_path.exists():
         content = engine_toml_path.read_text()
-        updated_content = content.replace(
-            'host = "0.0.0.0"',
-            'host = "127.0.0.1"'
-        ).replace(
-            'port = 8080',
-            'port = 8081'
-        ).replace(
-            'search_paths = ["/models"]',
-            f'search_paths = ["/models/{label}"]'
+        content = (
+            content
+            .replace('host = "0.0.0.0"', 'host = "127.0.0.1"')
+            .replace("port = 8080", "port = 8081")
+            .replace('search_paths = ["/models"]', f'search_paths = ["/models/{label}"]')
         )
-        print(f"✓ Updated engine.toml: search_paths changed to /models/{label}")
-        
-        # For standard (standalone) deployment, remove license-proxy from server_url
         if deploy_type == "standard":
-            updated_content = updated_content.replace(
+            content = content.replace(
                 'server_url = ["https://license-proxy:8443", "https://license.deepgram.com"]',
-                'server_url = ["https://license.deepgram.com"]'
+                'server_url = ["https://license.deepgram.com"]',
             )
-            print("✓ Updated engine.toml: server_url changed to direct license server")
-        
-        engine_toml_path.write_text(updated_content)
-        print("✓ Updated engine.toml: server host/port changed to 127.0.0.1:8081")
-    
-    # Commit the volume to persist the files
+        elif deploy_type == "license-proxy":
+            content = content.replace(
+                "https://license-proxy:8443",
+                "https://localhost:8443",
+            )
+        engine_toml_path.write_text(content)
+        print(f"✓ Patched engine.toml for single-container deployment (search_paths=/models/{label})")
+
+    # --- license-proxy.toml ---
+    lp_toml_path = dest_path / "license-proxy.toml"
+    if lp_toml_path.exists():
+        content = lp_toml_path.read_text()
+        # Bind to localhost (same container) and move status port off 8080 to avoid
+        # conflicting with the API which also listens on 8080.
+        content = (
+            content
+            .replace('host = "0.0.0.0"', 'host = "127.0.0.1"')
+            .replace("status_port = 8080", "status_port = 8089")
+        )
+        lp_toml_path.write_text(content)
+        print("✓ Patched license-proxy.toml for single-container deployment (status_port=8089)")
+
     cache_vol.commit()
-    
     return results
 
 @app.function(
@@ -277,29 +310,46 @@ def download_configs(
     },
 )
 def extract_stem_binary():
+    """Extract the stem binary from the API image and cache it in the volume."""
+    binary_path = "/cache/binary/stem"
     try:
-        # Check if binary is already cached in volume
-        if not os.path.exists("/cache/binary/stem"):
-            
-            # make dir
+        if not os.path.exists(binary_path):
             os.makedirs("/cache/binary", exist_ok=True)
-
-            # Not cached, fetch from API image
             extractor = StemExtractor()
-            stem_data = extractor.get_stem_binary.remote()
-            
-            # Save to volume for future restarts
-            with open("/cache/binary/stem", "wb") as f:
-                f.write(stem_data)
-
-            print(f"   ✅ stem binary fetched and saved to /cache/binary/stem ({len(stem_data) / (1024**2):.2f} MB)")
+            data = extractor.get_stem_binary.remote()
+            with open(binary_path, "wb") as f:
+                f.write(data)
+            print(f"   ✅ stem binary fetched and saved ({len(data) / (1024**2):.2f} MB)")
         else:
-            # Already cached, skip extraction
-            print(f"   ✅ stem binary already cached in /cache/binary/stem")
+            print(f"   ✅ stem binary already cached")
+        cache_vol.commit()
         return True
     except Exception as e:
-        raise RuntimeError(f"❌ Failed to fetch stem binary: {e}")
-        return False
+        raise RuntimeError(f"extract stem binary: {e}")
+
+
+@app.function(
+    volumes={
+        CACHE_PATH: cache_vol
+    },
+)
+def extract_hermes_binary():
+    """Extract the hermes binary from the license proxy image and cache it in the volume."""
+    binary_path = "/cache/binary/hermes"
+    try:
+        if not os.path.exists(binary_path):
+            os.makedirs("/cache/binary", exist_ok=True)
+            extractor = LicenseProxyExtractor()
+            data = extractor.get_hermes_binary.remote()
+            with open(binary_path, "wb") as f:
+                f.write(data)
+            print(f"   ✅ hermes binary fetched and saved ({len(data) / (1024**2):.2f} MB)")
+        else:
+            print(f"   ✅ hermes binary already cached")
+        cache_vol.commit()
+        return True
+    except Exception as e:
+        raise RuntimeError(f"extract hermes binary: {e}")
 
 @app.local_entrypoint()
 def prepare_resources(
@@ -307,10 +357,10 @@ def prepare_resources(
     model_links_path: str,
     source_api_config_file: str,
     source_engine_config_file: str,
-    deploy_type: str = "standard",
+    deploy_type: str = "license-proxy",
 ):
     """
-    Download Deepgram config files and models.
+    Download Deepgram config files, models, and binaries.
     
     Args:
         label: Label for the subfolder to organize configs and models (e.g., "stt", "tts").
@@ -319,13 +369,14 @@ def prepare_resources(
             self-hosted-resources repository (e.g., "api.toml", "api.aura-2-en.toml").
         source_engine_config_file: Name of the Engine config file to download from Deepgram's
             self-hosted-resources repository (e.g., "engine.toml", "engine.aura-2-en.toml").
-        deploy_type: Either "license-proxy" or "standard". Defaults to "standard".
+        deploy_type: Either "license-proxy" (default) or "standard".
     """
     from pathlib import Path
     
     print(f"Preparing resources with label: {label}")
     print(f"  API config: {source_api_config_file}")
     print(f"  Engine config: {source_engine_config_file}")
+    print(f"  Deploy type: {deploy_type}")
     
     # Parse model URLs from file
     models_file = Path(model_links_path)
@@ -335,7 +386,6 @@ def prepare_resources(
     urls = []
     for line in models_file.read_text().strip().split("\n"):
         line = line.strip()
-        # Skip empty lines and comments
         if line and not line.startswith("#"):
             urls.append(line)
     
@@ -350,7 +400,7 @@ def prepare_resources(
     else:
         print("\nNo model URLs found, skipping model downloads.")
 
-    # Download config files to label subfolder
+    # Download and patch config files
     print(f"\nDownloading config files to '{label}/' subfolder...")
     config_results = download_configs.remote(
         label=label,
@@ -360,11 +410,12 @@ def prepare_resources(
     )
     print(f"Config download results: {config_results}")
 
-    # Get API stem binary
-    # Download config files
-    print("\nExtracting API stem binary...")
-    if extract_stem_binary.remote():
-        print(f"Successfully extracted API stem binary.")
-    else:
-        print(f"Error extractring API stem binary.")
-   
+    # Extract binaries
+    print("\nExtracting stem binary...")
+    extract_stem_binary.remote()
+
+    if deploy_type == "license-proxy":
+        print("Extracting hermes (license proxy) binary...")
+        extract_hermes_binary.remote()
+
+    print("\n✅ Resource preparation complete.")
