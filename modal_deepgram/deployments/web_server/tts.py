@@ -21,7 +21,7 @@ app = modal.App("deepgram-tts")
         CACHE_PATH: cache_vol
     },
     gpu=TTS_GPU,
-    secrets=[modal.Secret.from_name("deepgram")],
+    secrets=[modal.Secret.from_name(DEEPGRAM_SECRET_NAME)],
     timeout=10000,
     cpu=TTS_CPU_COUNT,
     memory=TTS_MEMORY,

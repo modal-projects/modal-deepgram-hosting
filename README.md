@@ -65,6 +65,20 @@ modal secret create deepgram \
 
 > **Note**: The `REGISTRY_USERNAME` and `REGISTRY_PASSWORD` are your container image distribution credentials from Deepgram Console, used to pull images from `quay.io/deepgram`.
 
+By default, the code looks for a Modal secret named `deepgram`. To use a different name, set the `DEEPGRAM_SECRET_NAME` environment variable:
+
+```bash
+# Create a secret with a custom name
+modal secret create my-deepgram-secret \
+  DEEPGRAM_API_KEY=<your-api-key-secret> \
+  REGISTRY_USERNAME=<your-quay-username> \
+  REGISTRY_PASSWORD=<your-quay-password>
+
+# Use it for resource preparation and deployment
+DEEPGRAM_SECRET_NAME=my-deepgram-secret modal run -m modal_deepgram.utils.modal_resources ...
+DEEPGRAM_SECRET_NAME=my-deepgram-secret modal deploy -m modal_deepgram.deployments.web_server.stt
+```
+
 ### 3. Add Model Links
 
 Create a file containing URLs to your Deepgram model files. Deepgram provides these links based on your license. This file can be created anywhere—you'll pass its path to the prepare command.

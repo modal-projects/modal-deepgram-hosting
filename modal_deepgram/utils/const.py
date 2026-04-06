@@ -1,3 +1,8 @@
+import os
+
+# secrets
+DEEPGRAM_SECRET_NAME = os.environ.get("DEEPGRAM_SECRET_NAME", "deepgram")
+
 # volumes
 MODELS_VOL_NAME = "deepgram-models"
 CACHE_VOL_NAME = "deepgram-cache"       

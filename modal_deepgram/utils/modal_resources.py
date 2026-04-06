@@ -3,6 +3,7 @@ import modal
 
 from .const import (
     CACHE_PATH,
+    DEEPGRAM_SECRET_NAME,
     MODELS_VOL_NAME, 
     CACHE_VOL_NAME, 
 )
@@ -14,7 +15,7 @@ cache_vol = modal.Volume.from_name(CACHE_VOL_NAME, create_if_missing=True)
 api_image = (
     modal.Image.from_registry(
         "quay.io/deepgram/self-hosted-api:release-260319",
-        secret=modal.Secret.from_name("deepgram"),
+        secret=modal.Secret.from_name(DEEPGRAM_SECRET_NAME),
         add_python="3.12",
     )
     .entrypoint([])
@@ -24,7 +25,7 @@ api_image = (
 license_proxy_image = (
     modal.Image.from_registry(
         "quay.io/deepgram/self-hosted-license-proxy:release-260319",
-        secret=modal.Secret.from_name("deepgram"),
+        secret=modal.Secret.from_name(DEEPGRAM_SECRET_NAME),
         add_python="3.12",
     )
     .entrypoint([])
@@ -32,7 +33,7 @@ license_proxy_image = (
 
 app = modal.App("prep-deepgram-resources")
 
-@app.cls(image=api_image, secrets=[modal.Secret.from_name("deepgram")])
+@app.cls(image=api_image, secrets=[modal.Secret.from_name(DEEPGRAM_SECRET_NAME)])
 class StemExtractor:
     """Extract stem binary from API image"""
     
@@ -43,7 +44,7 @@ class StemExtractor:
             return f.read()
 
 
-@app.cls(image=license_proxy_image, secrets=[modal.Secret.from_name("deepgram")])
+@app.cls(image=license_proxy_image, secrets=[modal.Secret.from_name(DEEPGRAM_SECRET_NAME)])
 class LicenseProxyExtractor:
     """Extract hermes binary from license proxy image"""
     
@@ -57,7 +58,7 @@ class LicenseProxyExtractor:
 engine_base_image = (
     modal.Image.from_registry(
         "quay.io/deepgram/self-hosted-engine:release-260319",
-        secret=modal.Secret.from_name("deepgram"),
+        secret=modal.Secret.from_name(DEEPGRAM_SECRET_NAME),
     )
     .uv_pip_install("fastapi[standard]", "httpx")
     .entrypoint([])
@@ -164,7 +165,7 @@ def download_model(
     volumes={
         "/mnt/cache": cache_vol,
     },
-    secrets=[modal.Secret.from_name("deepgram")],
+    secrets=[modal.Secret.from_name(DEEPGRAM_SECRET_NAME)],
 )
 def download_configs(
     label: str,

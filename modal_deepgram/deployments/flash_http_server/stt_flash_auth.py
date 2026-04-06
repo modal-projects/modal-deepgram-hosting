@@ -41,7 +41,7 @@ auth_engine_image = engine_base_image.pip_install("websockets")
         CACHE_PATH: cache_vol,
     },
     gpu="L4",
-    secrets=[modal.Secret.from_name("deepgram"), modal.Secret.from_name("deepgram-api-auth")],
+    secrets=[modal.Secret.from_name(DEEPGRAM_SECRET_NAME), modal.Secret.from_name("deepgram-api-auth")],
     timeout=10000,
     cpu=4,
     memory=32*1024,

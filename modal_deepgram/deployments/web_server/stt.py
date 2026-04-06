@@ -21,7 +21,7 @@ app = modal.App("deepgram-stt")
         CACHE_PATH: cache_vol
     },
     gpu=STT_GPU,
-    secrets=[modal.Secret.from_name("deepgram")],
+    secrets=[modal.Secret.from_name(DEEPGRAM_SECRET_NAME)],
     timeout=10000,
     cpu=STT_CPU_COUNT,
     memory=STT_MEMORY,

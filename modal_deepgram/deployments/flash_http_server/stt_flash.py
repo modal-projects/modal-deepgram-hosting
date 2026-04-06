@@ -29,7 +29,7 @@ app = modal.App("deepgram-flash-stt")
         CACHE_PATH: cache_vol,
     },
     gpu="L4",
-    secrets=[modal.Secret.from_name("deepgram")],
+    secrets=[modal.Secret.from_name(DEEPGRAM_SECRET_NAME)],
     timeout=10000,
     cpu=4,
     memory=32*1024,
