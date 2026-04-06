@@ -3,6 +3,7 @@ import modal
 
 from .const import (
     CACHE_PATH,
+    DEEPGRAM_IMAGE_TAG,
     DEEPGRAM_SECRET_NAME,
     MODELS_VOL_NAME, 
     CACHE_VOL_NAME, 
@@ -14,7 +15,7 @@ cache_vol = modal.Volume.from_name(CACHE_VOL_NAME, create_if_missing=True)
 # API image for extracting stem binary
 api_image = (
     modal.Image.from_registry(
-        "quay.io/deepgram/self-hosted-api:release-260319",
+        f"quay.io/deepgram/self-hosted-api:{DEEPGRAM_IMAGE_TAG}",
         secret=modal.Secret.from_name(DEEPGRAM_SECRET_NAME),
         add_python="3.12",
     )
@@ -24,7 +25,7 @@ api_image = (
 # License proxy image for extracting hermes binary
 license_proxy_image = (
     modal.Image.from_registry(
-        "quay.io/deepgram/self-hosted-license-proxy:release-260319",
+        f"quay.io/deepgram/self-hosted-license-proxy:{DEEPGRAM_IMAGE_TAG}",
         secret=modal.Secret.from_name(DEEPGRAM_SECRET_NAME),
         add_python="3.12",
     )
@@ -57,7 +58,7 @@ class LicenseProxyExtractor:
 # Use Engine image as base (has GPU/CUDA dependencies)
 engine_base_image = (
     modal.Image.from_registry(
-        "quay.io/deepgram/self-hosted-engine:release-260319",
+        f"quay.io/deepgram/self-hosted-engine:{DEEPGRAM_IMAGE_TAG}",
         secret=modal.Secret.from_name(DEEPGRAM_SECRET_NAME),
     )
     .uv_pip_install("fastapi[standard]", "httpx")

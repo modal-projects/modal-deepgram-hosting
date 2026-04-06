@@ -3,6 +3,9 @@ import os
 # secrets
 DEEPGRAM_SECRET_NAME = os.environ.get("DEEPGRAM_SECRET_NAME", "deepgram")
 
+# container images
+DEEPGRAM_IMAGE_TAG = os.environ.get("DEEPGRAM_IMAGE_TAG", "release-260319")
+
 # volumes
 MODELS_VOL_NAME = "deepgram-models"
 CACHE_VOL_NAME = "deepgram-cache"       

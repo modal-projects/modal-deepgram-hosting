@@ -79,7 +79,23 @@ DEEPGRAM_SECRET_NAME=my-deepgram-secret modal run -m modal_deepgram.utils.modal_
 DEEPGRAM_SECRET_NAME=my-deepgram-secret modal deploy -m modal_deepgram.deployments.web_server.stt
 ```
 
-### 3. Add Model Links
+### 3. Set Container Image Version
+
+The deployment uses Deepgram's self-hosted container images. The image tag defaults to `release-260319` and can be updated via the `DEEPGRAM_IMAGE_TAG` environment variable. Check the [Deepgram Self-Hosted Changelog](https://developers.deepgram.com/changelog) for the latest release.
+
+```bash
+# Use a newer release for all commands
+DEEPGRAM_IMAGE_TAG=release-260402 modal run -m modal_deepgram.utils.modal_resources ...
+DEEPGRAM_IMAGE_TAG=release-260402 modal deploy -m modal_deepgram.deployments.web_server.stt
+```
+
+Or export it for your session:
+
+```bash
+export DEEPGRAM_IMAGE_TAG=release-260402
+```
+
+### 4. Add Model Links
 
 Create a file containing URLs to your Deepgram model files. Deepgram provides these links based on your license. This file can be created anywhere—you'll pass its path to the prepare command.
 
