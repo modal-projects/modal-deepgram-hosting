@@ -30,18 +30,18 @@ from .shared import (
     MODELS_VOL_NAME,
 )
 
-# Hardware. Literals below are sized for STT (Nova family) on a single L4.
-# Replace with the values Deepgram recommends for the workload you're
-# deploying — e.g. TTS (Aura-2) wants two GPUs, so set GPU="L4:2",
-# CPU_COUNT=8, MEMORY=64*1024. For Flux see Deepgram's GPU resource
-# allocation guide.
+# compute resources
 GPU = "L4"
 CPU_COUNT = 4
 MEMORY = 32 * 1024  # MB
+
+# autoscaling
 MIN_CONTAINERS = 1
+
+# concurrency
 TARGET_INPUTS = 64
 
-# flash http_server deployments
+# region selection
 PROXY_REGION = "us-west"
 SERVER_REGIONS = ["us-west"]
 
@@ -60,7 +60,7 @@ app = modal.App(f"deepgram-flash-{DEPLOY_LABEL}")
 MINUTES = 60
 
 @app.cls(
-    image=engine_base_image,
+    image=engine_base_image.env({"DEPLOY_LABEL": DEPLOY_LABEL}),
     volumes={
         MODELS_PATH: models_vol,
         CACHE_PATH: cache_vol,

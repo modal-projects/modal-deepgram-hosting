@@ -6,15 +6,21 @@ When you clone the repo, the values are configured for an STT deployment in `us-
 
 ```python
 # modal_deepgram/app.py
+
+# compute resources
 GPU = "L4"
 CPU_COUNT = 4
 MEMORY = 32 * 1024  # MB
+
+# autoscaling
 MIN_CONTAINERS = 1
+
+# concurrency
 TARGET_INPUTS = 64
 
-# flash http_server deployments
+# region selection
 PROXY_REGION = "us-west"
-SERVER_REGION = ["us-west"]
+SERVER_REGIONS = ["us-west"]
 ```
 
 ## Configure hardware
