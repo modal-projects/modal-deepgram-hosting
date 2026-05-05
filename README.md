@@ -294,7 +294,7 @@ Autoscaling is configured in the deployment files (`stt_flash.py` / `tts_flash.p
 )
 @modal.concurrent(target_inputs=FLASH_TARGET_INPUTS)
 @modal.experimental.http_server(port=API_PORT, proxy_regions=[FLASH_REGION])
-class DeepgramFlashSTT(DeepgramSingleContainer):
+class DeepgramFlashSTT(DeepgramServer):
     ...
 ```
 

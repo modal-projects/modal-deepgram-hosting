@@ -14,7 +14,7 @@ from .shared import (
 )
 
 
-class DeepgramSingleContainer:
+class DeepgramServer:
     """Deepgram All-in-One Service: Engine + API + optional License Proxy in a single container.
 
     Subclasses must set `label` as a class variable. Override `config_dir` and
