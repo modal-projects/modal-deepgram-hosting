@@ -48,11 +48,17 @@ Get an STT deployment up and running:
     https://LINK_TO_MODEL_N.dg
     ```
 
-5. Download Deepgram configs and model weights to Modal Volumes. This command will download the most recent configs from the Deepgram self-hosted-resources repo and patch them to communicate over `localhost` using the correct ports
+5. Set the label for this configuration using the `DEPLOY_LABEL` environment variable.
+
+   ```bash
+   export DEPLOY_LABEL=stt
+   ```
+
+6. Download Deepgram configs and model weights to Modal Volumes. This command will download the most recent configs from the Deepgram self-hosted-resources repo and patch them to communicate over `localhost` using the correct ports
 
    ```bash
    modal run -m modal_deepgram.modal_resources \
-     --label stt \
+     --label $DEPLOY_LABEL \
      --model-links-path ./model-links.txt \
      --source-api-config-file api.toml \
      --source-engine-config-file engine.toml
@@ -61,16 +67,12 @@ Get an STT deployment up and running:
 6. Deploy the Modal app.
 
     ```bash
-   # For STT:
-   DEPLOY_LABEL=stt modal deploy -m modal_deepgram.app
-
-   # For TTS (after editing the hardware literals):
-   DEPLOY_LABEL=tts modal deploy -m modal_deepgram.app
+   modal deploy -m modal_deepgram.app
    ```
 
 ## Testing the deployment
 
-Once your Modal app is deployed, run a quick set of checks against the public URL to confirm the API is up, models are loaded, and inference works end to end. The Modal endpoint speaks the standard Deepgram REST and WebSocket APIs, so any Deepgram client or SDK works against it.
+Once your Modal app is deployed and a container is running, run a quick set of checks against the public URL to confirm the API is up, models are loaded, and inference works end to end. The Modal endpoint speaks the standard Deepgram REST and WebSocket APIs, so any Deepgram client or SDK works against it.
 
 ### Locate your deployment URL
 

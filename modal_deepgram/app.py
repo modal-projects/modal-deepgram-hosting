@@ -43,10 +43,10 @@ TARGET_INPUTS = 64
 
 # flash http_server deployments
 PROXY_REGION = "us-west"
-SERVER_REGION = ["us-west"]
+SERVER_REGIONS = ["us-west"]
 
-LABEL = os.environ.get("DEPLOY_LABEL")
-if not LABEL:
+DEPLOY_LABEL = os.environ.get("DEPLOY_LABEL")
+if not DEPLOY_LABEL:
     raise RuntimeError(
         "DEPLOY_LABEL is required. Example: "
         "DEPLOY_LABEL=stt modal deploy -m modal_deepgram.app"
@@ -55,7 +55,7 @@ if not LABEL:
 models_vol = modal.Volume.from_name(MODELS_VOL_NAME, create_if_missing=True)
 cache_vol = modal.Volume.from_name(CACHE_VOL_NAME, create_if_missing=True)
 
-app = modal.App(f"deepgram-flash-{LABEL}")
+app = modal.App(f"deepgram-flash-{DEPLOY_LABEL}")
 
 MINUTES = 60
 
@@ -71,10 +71,10 @@ MINUTES = 60
     cpu=CPU_COUNT,
     memory=MEMORY,
     min_containers=MIN_CONTAINERS,
-    region=SERVER_REGION,
+    region=SERVER_REGIONS,
 )
 @modal.concurrent(target_inputs=TARGET_INPUTS)
-@modal.experimental.http_server(port=API_PORT, proxy_regions=PROXY_REGION)
+@modal.experimental.http_server(port=API_PORT, proxy_regions=[PROXY_REGION])
 class DeepgramServer(DeepgramServerBase):
     """Deepgram self-hosted service via Modal's experimental HTTP server.
 
@@ -82,4 +82,4 @@ class DeepgramServer(DeepgramServerBase):
     configs and models on the Modal volumes under `{label}/`, selected at
     deploy time by the `DEPLOY_LABEL` environment variable.
     """
-    label: str = LABEL
+    label: str = DEPLOY_LABEL

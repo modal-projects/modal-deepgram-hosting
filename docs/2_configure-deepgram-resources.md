@@ -2,11 +2,18 @@
 
 ## Configure Deepgram
 
-Modal Deepgram deployments are managed by labels. Each label specifies a set of Deepgram TOML files and models. These resources are stored on Modal Volumes when you run
+Modal Deepgram deployments are managed by labels. Each label specifies a set of Deepgram TOML files and models. 
+
+Set the label by exporting an environment variable.
+```bash
+export DEPLOY_LABEL=stt
+```
+
+These resources are stored on Modal Volumes when you run
 
 ```bash
 modal run -m modal_deepgram.modal_resources \
-  --label <config-label> \
+  --label $DEPLOY_LABEL \
   --model-links-path <path-to-models-list-txt-file> \
   --deploy-type license-proxy \
   --source-api-config-file <api-toml-file> \
@@ -64,8 +71,10 @@ The end-to-end flow for an Aura-2 TTS deployment:
 2. Run `prepare_resources` with the `tts` label and Aura-2 config files. For language-specific deployments, swap the polyglot configs for variants like `api.aura-2-en.toml` / `engine.aura-2-en.toml`.
 
    ```bash
+   export DEPLOY_LABEL=tts
+
    modal run -m modal_deepgram.modal_resources \
-     --label tts \
+     --label $DEPLOY_LABEL \
      --model-links-path ./tts-model-links.txt \
      --source-api-config-file api.aura-2-polyglot.toml \
      --source-engine-config-file engine.aura-2-polyglot.toml
