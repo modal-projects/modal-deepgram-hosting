@@ -71,13 +71,7 @@ The end-to-end flow for an Aura-2 TTS deployment:
      --source-engine-config-file engine.aura-2-polyglot.toml
    ```
 
-3. TTS requires two GPUs (one for the generative model, one for the vocoder). Edit the hardware literals at the top of `modal_deepgram/app.py`:
-
-   ```python
-   GPU = "L4:2"
-   CPU_COUNT = 8
-   MEMORY = 64 * 1024
-   ```
+3. Update the hardware literals in `modal_deepgram/app.py` to TTS-recommended values — see [Compute and Autoscaling → Configure hardware](./3_compute-autoscaling.md#configure-hardware).
 
 4. Deploy:
 

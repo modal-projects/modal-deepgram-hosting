@@ -21,7 +21,14 @@ SERVER_REGION = ["us-west"]
 
 Hardware is set as literals at the top of `modal_deepgram/app.py`, sized for STT (Nova family). Edit them per workload, then redeploy.
 
+For TTS (Aura-2), use two GPUs — one for the generative model, one for the vocoder:
 
+```python
+# modal_deepgram/app.py
+GPU = "L4:2"
+CPU_COUNT = 8
+MEMORY = 64 * 1024
+```
 
 For Deepgram's hardware minimums, see [Deployment Environments → Engine](https://developers.deepgram.com/docs/self-hosted-deployment-environments#engine). For Modal's GPU options, see [Modal: GPU](https://modal.com/docs/guide/gpu).
 
@@ -33,6 +40,7 @@ See their [Scaling Out guide](https://modal.com/docs/guide/scale) and [Input Con
 
 ### Notes
 > Deepgram recommends keeping at least one container active to ensure that lulls in traffic don't lead to queuing or 503s when scaling back up from zero. In Modal, set `min_containers = 1`.
+
 > Web endpoints served with the `http_server` only accept a value for `target_inputs` and not `max_inputs`.
 
 ## Region Selection
