@@ -67,18 +67,11 @@ modal secret create deepgram \
 
 ### 3. Set Container Image Version
 
-The deployment uses Deepgram's self-hosted container images. The image tag defaults to `release-260319` and can be updated via the `DEEPGRAM_IMAGE_TAG` environment variable. Check the [Deepgram Self-Hosted Changelog](https://developers.deepgram.com/changelog) for the latest release.
+The Deepgram self-hosted containers are pinned by the `DEEPGRAM_IMAGE_TAG` literal at the top of `modal_deepgram/deepgram.py`. Both the prep workflow and the deployed app read it, so the binaries extracted onto the cache volume always match the deployed Engine. To bump, edit the constant, re-run `prepare_resources`, then redeploy. Check the [Deepgram Self-Hosted Changelog](https://developers.deepgram.com/changelog) for available releases.
 
-```bash
-# Use a newer release for all commands
-DEEPGRAM_IMAGE_TAG=release-260402 modal run -m modal_deepgram.utils.modal_resources ...
-DEEPGRAM_IMAGE_TAG=release-260402 modal deploy -m modal_deepgram.deployments.flash_http_server.stt_flash
-```
-
-Or export it for your session:
-
-```bash
-export DEEPGRAM_IMAGE_TAG=release-260402
+```python
+# modal_deepgram/deepgram.py
+DEEPGRAM_IMAGE_TAG = "release-260319"
 ```
 
 ### 4. Add Model Links
@@ -116,7 +109,7 @@ For TTS deployments (e.g., Aura-2), you may need language-specific config files 
 #### Prepare STT Resources
 
 ```bash
-modal run -m modal_deepgram.utils.modal_resources \
+modal run -m modal_deepgram.modal_resources \
   --label stt \
   --model-links-path /path/to/stt_model_links.txt \
   --source-api-config-file api.toml \
@@ -126,7 +119,7 @@ modal run -m modal_deepgram.utils.modal_resources \
 #### Prepare TTS Resources
 
 ```bash
-modal run -m modal_deepgram.utils.modal_resources \
+modal run -m modal_deepgram.modal_resources \
   --label tts \
   --model-links-path /path/to/tts_model_links.txt \
   --source-api-config-file api.aura-2-polyglot.toml \
@@ -138,7 +131,7 @@ modal run -m modal_deepgram.utils.modal_resources \
 To deploy without a local License Proxy (license validation goes directly to `license.deepgram.com`):
 
 ```bash
-modal run -m modal_deepgram.utils.modal_resources \
+modal run -m modal_deepgram.modal_resources \
   --label stt \
   --model-links-path /path/to/stt_model_links.txt \
   --source-api-config-file api.toml \
@@ -188,23 +181,27 @@ modal volume put deepgram-cache ./engine.toml configs/stt/engine.toml
 After updating config files, redeploy the service to apply changes:
 
 ```bash
-modal deploy -m modal_deepgram.deployments.flash_http_server.stt_flash
+DEPLOY_LABEL=stt modal deploy -m modal_deepgram.app
 ```
 
 See the [Deepgram configuration documentation](https://developers.deepgram.com/docs/deploy-stt-services) for complete configuration options.
 
 ## Deploy on Modal
 
+A single deployment module — `modal_deepgram/app.py` — is parameterized at deploy time by the `DEPLOY_LABEL` environment variable. The label selects which configs (`/cache/configs/{label}/`) and models (`/models/{label}/`) the container loads, and is the suffix of the Modal app name (`deepgram-flash-{label}`). Deploy each label independently:
+
 ### Deploy STT Service
 
 ```bash
-modal deploy -m modal_deepgram.deployments.flash_http_server.stt_flash
+DEPLOY_LABEL=stt modal deploy -m modal_deepgram.app
 ```
 
 ### Deploy TTS Service
 
+The hardware literals at the top of `modal_deepgram/app.py` are sized for STT (`L4`, 4 CPU, 32 GB). Before deploying TTS, edit them to Deepgram's recommended TTS hardware (e.g. `GPU = "L4:2"`, `CPU_COUNT = 8`, `MEMORY = 64 * 1024`):
+
 ```bash
-modal deploy -m modal_deepgram.deployments.flash_http_server.tts_flash
+DEPLOY_LABEL=tts modal deploy -m modal_deepgram.app
 ```
 
 After deployment, Modal will output the service URL, e.g.:
@@ -252,23 +249,19 @@ curl \
 
 ### Hardware Configuration
 
-Per-deployment hardware defaults live at the top of each deployment module (`modal_deepgram/deployments/flash_http_server/stt_flash.py` and `tts_flash.py`):
+Hardware lives as literal constants at the top of `modal_deepgram/app.py`. The repo defaults are sized for STT (Nova family) on a single L4. Edit them in place to match Deepgram's hardware recommendations for the workload you're deploying, then run `modal deploy` for that label:
 
 ```python
-# stt_flash.py
-DEFAULT_STT_CPU_COUNT = 4
-DEFAULT_STT_MEMORY = 32 * 1024  # 32 GB
-DEFAULT_STT_GPU = "L4"
-DEFAULT_STT_MIN_CONTAINERS = 1
-
-# tts_flash.py
-DEFAULT_TTS_CPU_COUNT = 8
-DEFAULT_TTS_MEMORY = 64 * 1024  # 64 GB
-DEFAULT_TTS_GPU = "L4:2"  # 2x L4 GPUs
-DEFAULT_TTS_MIN_CONTAINERS = 1
+# modal_deepgram/app.py
+GPU = "L4"
+CPU_COUNT = 4
+MEMORY = 32 * 1024  # MB
+MIN_CONTAINERS = 1
 ```
 
-Cross-deployment values (region, autoscaling target, volume names, in-container ports) live in `modal_deepgram/utils/shared.py`:
+For TTS (Aura-2), set `GPU = "L4:2"`, `CPU_COUNT = 8`, `MEMORY = 64 * 1024` before `DEPLOY_LABEL=tts modal deploy …`. For Flux, see Deepgram's [GPU Resource Allocation](https://developers.deepgram.com/docs/flux-self-hosted#flux-gpu-resource-allocation) guide.
+
+Cross-deployment values (region, autoscaling target, volume names, in-container ports) live in `modal_deepgram/shared.py`:
 
 ```python
 FLASH_REGION = "us-west"
@@ -284,17 +277,17 @@ Available GPU options on Modal include:
 
 ### Autoscaling
 
-Autoscaling is configured in the deployment files (`stt_flash.py` / `tts_flash.py`):
+Autoscaling is configured on the deployment class in `modal_deepgram/app.py`:
 
 ```python
 @app.cls(
     # ...
-    min_containers=DEFAULT_STT_MIN_CONTAINERS,  # keep at least 1 container warm
+    min_containers=MIN_CONTAINERS,  # keep at least 1 container warm
     region=FLASH_REGION,
 )
 @modal.concurrent(target_inputs=FLASH_TARGET_INPUTS)
 @modal.experimental.http_server(port=API_PORT, proxy_regions=[FLASH_REGION])
-class DeepgramFlashSTT(DeepgramServer):
+class DeepgramFlash(DeepgramServer):
     ...
 ```
 

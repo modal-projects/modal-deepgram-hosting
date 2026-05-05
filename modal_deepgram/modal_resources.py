@@ -1,77 +1,49 @@
-import os
 import modal
 
+from .deepgram import (
+    app,
+    cache_vol,
+    extract_hermes_binary,
+    extract_stem_binary,
+)
 from .shared import (
-    CACHE_PATH,
     MODELS_VOL_NAME,
-    CACHE_VOL_NAME,
     API_PORT,
     ENGINE_PORT,
     LICENSE_PROXY_PORT,
     LICENSE_PROXY_STATUS_PORT,
 )
 
-# pinned tag for the Deepgram self-hosted containers
-# (quay.io/deepgram/self-hosted-{api,engine,license-proxy}).
-DEFAULT_DEEPGRAM_IMAGE_TAG = os.environ.get("DEEPGRAM_IMAGE_TAG", "release-260319")
-
 models_vol = modal.Volume.from_name(MODELS_VOL_NAME, create_if_missing=True)
-cache_vol = modal.Volume.from_name(CACHE_VOL_NAME, create_if_missing=True)
-
-# API image for extracting stem binary
-api_image = (
-    modal.Image.from_registry(
-        f"quay.io/deepgram/self-hosted-api:{DEFAULT_DEEPGRAM_IMAGE_TAG}",
-        secret=modal.Secret.from_name("deepgram"),
-        add_python="3.12",
-    )
-    .entrypoint([])
-)
-
-# License proxy image for extracting hermes binary
-license_proxy_image = (
-    modal.Image.from_registry(
-        f"quay.io/deepgram/self-hosted-license-proxy:{DEFAULT_DEEPGRAM_IMAGE_TAG}",
-        secret=modal.Secret.from_name("deepgram"),
-        add_python="3.12",
-    )
-    .entrypoint([])
-)
-
-app = modal.App("prep-deepgram-resources")
-
-@app.cls(image=api_image, secrets=[modal.Secret.from_name("deepgram")])
-class StemExtractor:
-    """Extract stem binary from API image"""
-    
-    @modal.method()
-    def get_stem_binary(self):
-        """Read and return the stem binary"""
-        with open("/bin/stem", "rb") as f:
-            return f.read()
-
-
-@app.cls(image=license_proxy_image, secrets=[modal.Secret.from_name("deepgram")])
-class LicenseProxyExtractor:
-    """Extract hermes binary from license proxy image"""
-    
-    @modal.method()
-    def get_hermes_binary(self):
-        """Read and return the hermes (license proxy) binary"""
-        with open("/bin/hermes", "rb") as f:
-            return f.read()
-
-# Use Engine image as base (has GPU/CUDA dependencies)
-engine_base_image = (
-    modal.Image.from_registry(
-        f"quay.io/deepgram/self-hosted-engine:{DEFAULT_DEEPGRAM_IMAGE_TAG}",
-        secret=modal.Secret.from_name("deepgram"),
-    )
-    .uv_pip_install("fastapi[standard]", "httpx")
-    .entrypoint([])
-)
 
 MINUTES = 60
+
+
+@app.function(
+    volumes={
+        "/mnt/models": models_vol,
+    },
+)
+def clear_models(label: str, destination: str = "/mnt/models/") -> bool:
+    """Delete every file under `{destination}/{label}/` and commit the volume."""
+    import shutil
+    from pathlib import Path
+
+    dest_dir = Path(destination) / label
+    if dest_dir.exists():
+        for child in dest_dir.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+        print(f"   ✅ Cleared existing models at {dest_dir}")
+    else:
+        print(f"   (No existing models for label '{label}')")
+
+    models_vol.commit()
+    return True
+
+
 @app.function(
     volumes={
         "/mnt/models": models_vol,
@@ -86,8 +58,9 @@ def download_model(
     show_progress: bool = True,
 ) -> bool:
     """
-    Download a model file from a URL to the models volume.
-    
+    Download a model file from a URL to the models volume, overwriting any
+    existing file with the same name.
+
     Args:
         url: URL to download the model from
         label: Label for the subfolder to save the model in
@@ -103,16 +76,10 @@ def download_model(
     from pathlib import Path
     
     try:
-        # Create destination directory with label subfolder
         dest_dir = Path(destination) / label
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / Path(url).name
 
-        # if file already exists, don't recopy
-        if os.path.exists(dest_path):
-            return
-
-        # Get file name for progress display
         filename = dest_path.name
 
         # Open the URL
@@ -176,18 +143,25 @@ def download_model(
 )
 def download_configs(
     label: str,
-    api_config_file: str = "api.toml",
-    engine_config_file: str = "engine.toml",
+    api_config_file: str | None = None,
+    engine_config_file: str | None = None,
     deploy_type: str = "license-proxy",
     destination: str = "/mnt/cache/configs",
 ) -> dict[str, bool]:
     """
     Download Deepgram config files from the self-hosted-resources repository.
-    
+
+    Each of api_config_file and engine_config_file is optional; pass only the
+    ones you want to (re)download. license-proxy.toml is refreshed only when
+    both api and engine configs are being downloaded together (i.e. a full
+    config refresh) and deploy_type is "license-proxy".
+
     Args:
         label: Label for the subfolder to save configs in
-        api_config_file: Name of the API config file to download (e.g., "api.toml")
-        engine_config_file: Name of the Engine config file to download (e.g., "engine.toml")
+        api_config_file: Name of the API config file to download (e.g., "api.toml").
+            Pass None to skip.
+        engine_config_file: Name of the Engine config file to download (e.g., "engine.toml").
+            Pass None to skip.
         deploy_type: Either "license-proxy" or "standard"
         destination: Base directory to save config files
     
@@ -203,14 +177,21 @@ def download_configs(
     # Convert deploy_type to directory name (license-proxy -> license_proxy_deploy)
     deploy_dir = f"{deploy_type.replace('-', '_')}_deploy"
     
-    # Build config files list: (remote_filename, local_filename)
-    # Remote filename is what we fetch, local filename is always api.toml/engine.toml
-    config_files = [
-        (api_config_file, "api.toml"),
-        (engine_config_file, "engine.toml"),
-    ]
-    if deploy_type == "license-proxy":
+    # Build config files list: (remote_filename, local_filename).
+    # Local filename is always api.toml/engine.toml/license-proxy.toml on the
+    # volume, regardless of which upstream variant we fetched.
+    config_files = []
+    if api_config_file:
+        config_files.append((api_config_file, "api.toml"))
+    if engine_config_file:
+        config_files.append((engine_config_file, "engine.toml"))
+    # Only refresh license-proxy.toml on a full config refresh, so partial
+    # updates don't clobber edits the user made on the volume.
+    if deploy_type == "license-proxy" and api_config_file and engine_config_file:
         config_files.append(("license-proxy.toml", "license-proxy.toml"))
+
+    if not config_files:
+        return {}
     
     # Create destination directory with label subfolder
     dest_path = Path(destination) / label
@@ -317,113 +298,86 @@ def download_configs(
     cache_vol.commit()
     return results
 
-@app.function(
-    volumes={
-        CACHE_PATH: cache_vol
-    },
-)
-def extract_stem_binary():
-    """Extract the stem binary from the API image and cache it in the volume."""
-    binary_path = "/cache/binary/stem"
-    try:
-        if not os.path.exists(binary_path):
-            os.makedirs("/cache/binary", exist_ok=True)
-            extractor = StemExtractor()
-            data = extractor.get_stem_binary.remote()
-            with open(binary_path, "wb") as f:
-                f.write(data)
-            print(f"   ✅ stem binary fetched and saved ({len(data) / (1024**2):.2f} MB)")
-        else:
-            print(f"   ✅ stem binary already cached")
-        cache_vol.commit()
-        return True
-    except Exception as e:
-        raise RuntimeError(f"extract stem binary: {e}")
-
-
-@app.function(
-    volumes={
-        CACHE_PATH: cache_vol
-    },
-)
-def extract_hermes_binary():
-    """Extract the hermes binary from the license proxy image and cache it in the volume."""
-    binary_path = "/cache/binary/hermes"
-    try:
-        if not os.path.exists(binary_path):
-            os.makedirs("/cache/binary", exist_ok=True)
-            extractor = LicenseProxyExtractor()
-            data = extractor.get_hermes_binary.remote()
-            with open(binary_path, "wb") as f:
-                f.write(data)
-            print(f"   ✅ hermes binary fetched and saved ({len(data) / (1024**2):.2f} MB)")
-        else:
-            print(f"   ✅ hermes binary already cached")
-        cache_vol.commit()
-        return True
-    except Exception as e:
-        raise RuntimeError(f"extract hermes binary: {e}")
-
 @app.local_entrypoint()
 def prepare_resources(
     label: str,
-    model_links_path: str,
-    source_api_config_file: str,
-    source_engine_config_file: str,
+    model_links_path: str | None = None,
+    source_api_config_file: str | None = None,
+    source_engine_config_file: str | None = None,
     deploy_type: str = "license-proxy",
 ):
     """
     Download Deepgram config files, models, and binaries.
-    
+
+    Every argument other than `label` is optional, so you can re-run this
+    entrypoint to update only a subset of resources (e.g. refresh models
+    without overwriting TOML edits made on the volume).
+
     Args:
         label: Label for the subfolder to organize configs and models (e.g., "stt", "tts").
         model_links_path: Path to file containing model URLs (one per line).
+            When provided, the label's model directory is wiped and re-populated
+            from the file. Omit to leave existing models untouched.
         source_api_config_file: Name of the API config file to download from Deepgram's
             self-hosted-resources repository (e.g., "api.toml", "api.aura-2-en.toml").
+            Omit to leave api.toml on the volume untouched.
         source_engine_config_file: Name of the Engine config file to download from Deepgram's
             self-hosted-resources repository (e.g., "engine.toml", "engine.aura-2-en.toml").
-        deploy_type: Either "license-proxy" (default) or "standard".
+            Omit to leave engine.toml on the volume untouched.
+        deploy_type: Either "license-proxy" (default) or "standard". Controls
+            whether the License Proxy is included. license-proxy.toml is only
+            (re)downloaded when both api and engine configs are being refreshed
+            in the same call.
     """
     from pathlib import Path
-    
+
     print(f"Preparing resources with label: {label}")
-    print(f"  API config: {source_api_config_file}")
-    print(f"  Engine config: {source_engine_config_file}")
+    print(f"  API config: {source_api_config_file or '(skip)'}")
+    print(f"  Engine config: {source_engine_config_file or '(skip)'}")
+    print(f"  Model links: {model_links_path or '(skip)'}")
     print(f"  Deploy type: {deploy_type}")
-    
-    # Parse model URLs from file
-    models_file = Path(model_links_path)
-    if not models_file.exists():
-        raise FileNotFoundError(f"Model links file not found: {model_links_path}")
-    
-    urls = []
-    for line in models_file.read_text().strip().split("\n"):
-        line = line.strip()
-        if line and not line.startswith("#"):
-            urls.append(line)
-    
-    print(f"Found {len(urls)} model URLs in {model_links_path}")
-    
-    # Download models to label subfolder
-    if urls:
-        print(f"\nDownloading {len(urls)} models to '{label}/' subfolder...")
-        for result in download_model.starmap([(url, label) for url in urls]):
-            pass
-        print("Model downloads complete.")
+
+    if model_links_path:
+        models_file = Path(model_links_path)
+        if not models_file.exists():
+            raise FileNotFoundError(f"Model links file not found: {model_links_path}")
+
+        urls = []
+        for line in models_file.read_text().strip().split("\n"):
+            line = line.strip()
+            if line and not line.startswith("#"):
+                urls.append(line)
+
+        print(f"Found {len(urls)} model URLs in {model_links_path}")
+
+        # wipe before downloading.
+        print(f"\nClearing existing models for label '{label}'...")
+        clear_models.remote(label)
+
+        if urls:
+            print(f"\nDownloading {len(urls)} models to '{label}/' subfolder...")
+            for result in download_model.starmap([(url, label) for url in urls]):
+                pass
+            print("Model downloads complete.")
+        else:
+            print("\nNo model URLs found; label now has no models.")
     else:
-        print("\nNo model URLs found, skipping model downloads.")
+        print("\nNo --model-links-path provided, leaving existing models untouched.")
 
-    # Download and patch config files
-    print(f"\nDownloading config files to '{label}/' subfolder...")
-    config_results = download_configs.remote(
-        label=label,
-        api_config_file=source_api_config_file,
-        engine_config_file=source_engine_config_file,
-        deploy_type=deploy_type,
-    )
-    print(f"Config download results: {config_results}")
+    if source_api_config_file or source_engine_config_file:
+        print(f"\nDownloading config files to '{label}/' subfolder...")
+        config_results = download_configs.remote(
+            label=label,
+            api_config_file=source_api_config_file,
+            engine_config_file=source_engine_config_file,
+            deploy_type=deploy_type,
+        )
+        print(f"Config download results: {config_results}")
+    else:
+        print("\nNo source config files provided, skipping config downloads.")
 
-    # Extract binaries
+    # Binary extraction is idempotent (skips if already cached on the volume),
+    # so run it on every invocation to make sure the volume is fully provisioned.
     print("\nExtracting stem binary...")
     extract_stem_binary.remote()
 

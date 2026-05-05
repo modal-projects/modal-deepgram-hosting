@@ -8,13 +8,120 @@ import modal
 from .shared import (
     API_PORT,
     CACHE_PATH,
+    CACHE_VOL_NAME,
     ENGINE_PORT,
     LICENSE_PROXY_PORT,
     LICENSE_PROXY_STATUS_PORT,
 )
 
+# Pinned tag for the Deepgram self-hosted containers
+# (quay.io/deepgram/self-hosted-{api,engine,license-proxy}). Bump this in
+# one place — both the prep workflow and the deployed app read it from here.
+DEEPGRAM_IMAGE_TAG = "release-260319"
 
-class DeepgramServer:
+# Pulled during prep to extract /bin/stem onto the cache volume.
+api_image = (
+    modal.Image.from_registry(
+        f"quay.io/deepgram/self-hosted-api:{DEEPGRAM_IMAGE_TAG}",
+        secret=modal.Secret.from_name("deepgram"),
+        add_python="3.12",
+    )
+    .entrypoint([])
+)
+
+# Pulled during prep to extract /bin/hermes onto the cache volume.
+license_proxy_image = (
+    modal.Image.from_registry(
+        f"quay.io/deepgram/self-hosted-license-proxy:{DEEPGRAM_IMAGE_TAG}",
+        secret=modal.Secret.from_name("deepgram"),
+        add_python="3.12",
+    )
+    .entrypoint([])
+)
+
+# Base image for the deployed runtime container. Has GPU/CUDA deps and the
+# impeller engine binary.
+engine_base_image = (
+    modal.Image.from_registry(
+        f"quay.io/deepgram/self-hosted-engine:{DEEPGRAM_IMAGE_TAG}",
+        secret=modal.Secret.from_name("deepgram"),
+    )
+    .uv_pip_install("fastapi[standard]", "httpx")
+    .entrypoint([])
+)
+
+
+# Modal app for the prep workflow. The extractor classes and binary-extraction
+# functions below register on this app, as do the volume / config / model
+# helpers in `modal_resources.py` (which imports `app` from here).
+app = modal.App("prep-deepgram-resources")
+
+cache_vol = modal.Volume.from_name(CACHE_VOL_NAME, create_if_missing=True)
+
+
+@app.cls(image=api_image, secrets=[modal.Secret.from_name("deepgram")])
+class StemExtractor:
+    """Extract stem binary from API image"""
+
+    @modal.method()
+    def get_stem_binary(self):
+        """Read and return the stem binary"""
+        with open("/bin/stem", "rb") as f:
+            return f.read()
+
+
+@app.cls(image=license_proxy_image, secrets=[modal.Secret.from_name("deepgram")])
+class LicenseProxyExtractor:
+    """Extract hermes binary from license proxy image"""
+
+    @modal.method()
+    def get_hermes_binary(self):
+        """Read and return the hermes (license proxy) binary"""
+        with open("/bin/hermes", "rb") as f:
+            return f.read()
+
+
+@app.function(volumes={CACHE_PATH: cache_vol})
+def extract_stem_binary():
+    """Extract the stem binary from the API image and cache it in the volume."""
+    binary_path = "/cache/binary/stem"
+    try:
+        if not os.path.exists(binary_path):
+            os.makedirs("/cache/binary", exist_ok=True)
+            extractor = StemExtractor()
+            data = extractor.get_stem_binary.remote()
+            with open(binary_path, "wb") as f:
+                f.write(data)
+            print(f"   ✅ stem binary fetched and saved ({len(data) / (1024**2):.2f} MB)")
+        else:
+            print(f"   ✅ stem binary already cached")
+        cache_vol.commit()
+        return True
+    except Exception as e:
+        raise RuntimeError(f"extract stem binary: {e}")
+
+
+@app.function(volumes={CACHE_PATH: cache_vol})
+def extract_hermes_binary():
+    """Extract the hermes binary from the license proxy image and cache it in the volume."""
+    binary_path = "/cache/binary/hermes"
+    try:
+        if not os.path.exists(binary_path):
+            os.makedirs("/cache/binary", exist_ok=True)
+            extractor = LicenseProxyExtractor()
+            data = extractor.get_hermes_binary.remote()
+            with open(binary_path, "wb") as f:
+                f.write(data)
+            print(f"   ✅ hermes binary fetched and saved ({len(data) / (1024**2):.2f} MB)")
+        else:
+            print(f"   ✅ hermes binary already cached")
+        cache_vol.commit()
+        return True
+    except Exception as e:
+        raise RuntimeError(f"extract hermes binary: {e}")
+
+
+class DeepgramServerBase:
     """Deepgram All-in-One Service: Engine + API + optional License Proxy in a single container.
 
     Subclasses must set `label` as a class variable. Override `config_dir` and
