@@ -14,7 +14,7 @@ Deepgram's self-hosted architecture consists of three services:
 - **API (Stem)**: HTTP API that receives requests and forwards them to the Engine
 - **License Proxy (Hermes)**: Caching proxy for license validation that enables high availability (optional but recommended for production)
 
-This deployment runs all services in a single Modal container, communicating over localhost. The API is exposed via Modal's web server infrastructure, while the Engine and License Proxy handle GPU inference and license validation internally.
+This deployment runs all services in a single Modal container, communicating over localhost. The API is exposed via Modal's experimental HTTP server with regional proxy support for lower latency, while the Engine and License Proxy handle GPU inference and license validation internally.
 
 Two deployment types are supported:
 
@@ -65,20 +65,6 @@ modal secret create deepgram \
 
 > **Note**: The `REGISTRY_USERNAME` and `REGISTRY_PASSWORD` are your container image distribution credentials from Deepgram Console, used to pull images from `quay.io/deepgram`.
 
-By default, the code looks for a Modal secret named `deepgram`. To use a different name, set the `DEEPGRAM_SECRET_NAME` environment variable:
-
-```bash
-# Create a secret with a custom name
-modal secret create my-deepgram-secret \
-  DEEPGRAM_API_KEY=<your-api-key-secret> \
-  REGISTRY_USERNAME=<your-quay-username> \
-  REGISTRY_PASSWORD=<your-quay-password>
-
-# Use it for resource preparation and deployment
-DEEPGRAM_SECRET_NAME=my-deepgram-secret modal run -m modal_deepgram.utils.modal_resources ...
-DEEPGRAM_SECRET_NAME=my-deepgram-secret modal deploy -m modal_deepgram.deployments.web_server.stt
-```
-
 ### 3. Set Container Image Version
 
 The deployment uses Deepgram's self-hosted container images. The image tag defaults to `release-260319` and can be updated via the `DEEPGRAM_IMAGE_TAG` environment variable. Check the [Deepgram Self-Hosted Changelog](https://developers.deepgram.com/changelog) for the latest release.
@@ -86,7 +72,7 @@ The deployment uses Deepgram's self-hosted container images. The image tag defau
 ```bash
 # Use a newer release for all commands
 DEEPGRAM_IMAGE_TAG=release-260402 modal run -m modal_deepgram.utils.modal_resources ...
-DEEPGRAM_IMAGE_TAG=release-260402 modal deploy -m modal_deepgram.deployments.web_server.stt
+DEEPGRAM_IMAGE_TAG=release-260402 modal deploy -m modal_deepgram.deployments.flash_http_server.stt_flash
 ```
 
 Or export it for your session:
@@ -202,7 +188,7 @@ modal volume put deepgram-cache ./engine.toml configs/stt/engine.toml
 After updating config files, redeploy the service to apply changes:
 
 ```bash
-modal deploy -m modal_deepgram.deployments.stt
+modal deploy -m modal_deepgram.deployments.flash_http_server.stt_flash
 ```
 
 See the [Deepgram configuration documentation](https://developers.deepgram.com/docs/deploy-stt-services) for complete configuration options.
@@ -212,13 +198,13 @@ See the [Deepgram configuration documentation](https://developers.deepgram.com/d
 ### Deploy STT Service
 
 ```bash
-modal deploy -m modal_deepgram.deployments.web_server.stt
+modal deploy -m modal_deepgram.deployments.flash_http_server.stt_flash
 ```
 
 ### Deploy TTS Service
 
 ```bash
-modal deploy -m modal_deepgram.deployments.web_server.tts
+modal deploy -m modal_deepgram.deployments.flash_http_server.tts_flash
 ```
 
 After deployment, Modal will output the service URL, e.g.:
@@ -266,18 +252,27 @@ curl \
 
 ### Hardware Configuration
 
-Hardware settings are defined in `modal_deepgram/utils/const.py`:
+Per-deployment hardware defaults live at the top of each deployment module (`modal_deepgram/deployments/flash_http_server/stt_flash.py` and `tts_flash.py`):
 
 ```python
-# STT Hardware
-STT_CPU_COUNT = 4
-STT_MEMORY = 32 * 1024  # 32 GB
-STT_GPU = "L4"
+# stt_flash.py
+DEFAULT_STT_CPU_COUNT = 4
+DEFAULT_STT_MEMORY = 32 * 1024  # 32 GB
+DEFAULT_STT_GPU = "L4"
+DEFAULT_STT_MIN_CONTAINERS = 1
 
-# TTS Hardware (requires more resources)
-TTS_CPU_COUNT = 8
-TTS_MEMORY = 64 * 1024  # 64 GB
-TTS_GPU = "L4:2"  # 2x L4 GPUs
+# tts_flash.py
+DEFAULT_TTS_CPU_COUNT = 8
+DEFAULT_TTS_MEMORY = 64 * 1024  # 64 GB
+DEFAULT_TTS_GPU = "L4:2"  # 2x L4 GPUs
+DEFAULT_TTS_MIN_CONTAINERS = 1
+```
+
+Cross-deployment values (region, autoscaling target, volume names, in-container ports) live in `modal_deepgram/utils/shared.py`:
+
+```python
+FLASH_REGION = "us-west"
+FLASH_TARGET_INPUTS = 20
 ```
 
 Available GPU options on Modal include:
@@ -289,15 +284,17 @@ Available GPU options on Modal include:
 
 ### Autoscaling
 
-Autoscaling is configured in the deployment files (`stt.py` / `tts.py`):
+Autoscaling is configured in the deployment files (`stt_flash.py` / `tts_flash.py`):
 
 ```python
 @app.cls(
     # ...
-    min_containers=1,  # Keep at least 1 container warm
+    min_containers=DEFAULT_STT_MIN_CONTAINERS,  # keep at least 1 container warm
+    region=FLASH_REGION,
 )
-@modal.concurrent(target_inputs=40, max_inputs=70)
-class DeepgramSTT(DeepgramSingleContainer):
+@modal.concurrent(target_inputs=FLASH_TARGET_INPUTS)
+@modal.experimental.http_server(port=API_PORT, proxy_regions=[FLASH_REGION])
+class DeepgramFlashSTT(DeepgramSingleContainer):
     ...
 ```
 
@@ -305,13 +302,13 @@ class DeepgramSTT(DeepgramSingleContainer):
 |---------|-------------|
 | `min_containers` | Minimum warm containers (avoids cold starts) |
 | `target_inputs` | Target concurrent requests per container for scaling |
-| `max_inputs` | Maximum concurrent requests before queuing |
+| `region` / `proxy_regions` | Modal region the container and HTTP proxy run in |
 
 > **Tip**: Deepgram recommends keeping at least 1 container warm (`min_containers=1`) to avoid cold start latency on the first request.
 
 ### Networking & Security
 
-Modal handles TLS termination and provides HTTPS endpoints automatically. The deployment exposes the Deepgram API on port 8080 via Modal's web server infrastructure.
+Modal handles TLS termination and provides HTTPS endpoints automatically. The deployment exposes the Deepgram API on port 8080 via Modal's experimental HTTP server, fronted by a regional proxy for lower latency.
 
 **Authentication**: By default, the Deepgram API accepts any request. To add authentication:
 

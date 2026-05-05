@@ -5,7 +5,13 @@ import time
 
 import modal
 
-from .const import *
+from .shared import (
+    API_PORT,
+    CACHE_PATH,
+    ENGINE_PORT,
+    LICENSE_PROXY_PORT,
+    LICENSE_PROXY_STATUS_PORT,
+)
 
 
 class DeepgramSingleContainer:
@@ -77,7 +83,7 @@ class DeepgramSingleContainer:
             try:
                 print(f"   Warm-up request {i+1}/2...")
                 response = httpx.post(
-                    "http://localhost:8080/v1/listen",
+                    f"http://localhost:{API_PORT}/v1/listen",
                     json={"url": "https://dpgr.am/spacewalk.wav"},
                     params={"model": "nova-3"},
                     timeout=60.0,
@@ -116,24 +122,26 @@ class DeepgramSingleContainer:
 
         if has_lp:
             step += 1
-            print(f"\n[Step {step}/{total}] Starting License Proxy on localhost:8443...")
+            print(f"\n[Step {step}/{total}] Starting License Proxy on localhost:{LICENSE_PROXY_PORT}...")
             self._license_proxy_process = self._start_process(
                 "/bin/hermes", f"{self.config_dir}/license-proxy.toml", "LicenseProxy"
             )
-            self._wait_for_ready("http://localhost:8089/v1/status", 60, "License Proxy")
+            self._wait_for_ready(
+                f"http://localhost:{LICENSE_PROXY_STATUS_PORT}/v1/status", 60, "License Proxy"
+            )
 
         step += 1
-        print(f"\n[Step {step}/{total}] Starting Engine on localhost:8081 (HTTPS)...")
+        print(f"\n[Step {step}/{total}] Starting Engine on localhost:{ENGINE_PORT} (HTTPS)...")
         self._engine_process = self._start_process(
             "/bin/impeller", f"{self.config_dir}/engine.toml", "Engine"
         )
 
         step += 1
-        print(f"\n[Step {step}/{total}] Starting API on localhost:8080 (HTTP, public)...")
+        print(f"\n[Step {step}/{total}] Starting API on localhost:{API_PORT} (HTTP, public)...")
         self._api_process = self._start_process(
             "/bin/stem", f"{self.config_dir}/api.toml", "API"
         )
-        self._wait_for_ready("http://localhost:8080/v1/status", 300, "API")
+        self._wait_for_ready(f"http://localhost:{API_PORT}/v1/status", 300, "API")
 
         step += 1
         print(f"\n[Step {step}/{total}] Warming up inference pipeline...")
@@ -143,9 +151,9 @@ class DeepgramSingleContainer:
         print("✅ Deepgram All-in-One Service Ready!")
         print("=" * 80)
         if has_lp:
-            print("License Proxy: localhost:8443 (HTTPS, internal only)")
-        print("Engine:        localhost:8081 (HTTPS with mTLS, internal only)")
-        print("API:           localhost:8080 (HTTP, exposed via web server)")
+            print(f"License Proxy: localhost:{LICENSE_PROXY_PORT} (HTTPS, internal only)")
+        print(f"Engine:        localhost:{ENGINE_PORT} (HTTPS with mTLS, internal only)")
+        print(f"API:           localhost:{API_PORT} (HTTP, exposed via Modal HTTP server)")
         print("=" * 80)
 
     @modal.exit()

@@ -1,13 +1,19 @@
 import os
 import modal
 
-from .const import (
+from .shared import (
     CACHE_PATH,
-    DEEPGRAM_IMAGE_TAG,
-    DEEPGRAM_SECRET_NAME,
-    MODELS_VOL_NAME, 
-    CACHE_VOL_NAME, 
+    MODELS_VOL_NAME,
+    CACHE_VOL_NAME,
+    API_PORT,
+    ENGINE_PORT,
+    LICENSE_PROXY_PORT,
+    LICENSE_PROXY_STATUS_PORT,
 )
+
+# pinned tag for the Deepgram self-hosted containers
+# (quay.io/deepgram/self-hosted-{api,engine,license-proxy}).
+DEFAULT_DEEPGRAM_IMAGE_TAG = os.environ.get("DEEPGRAM_IMAGE_TAG", "release-260319")
 
 models_vol = modal.Volume.from_name(MODELS_VOL_NAME, create_if_missing=True)
 cache_vol = modal.Volume.from_name(CACHE_VOL_NAME, create_if_missing=True)
@@ -15,8 +21,8 @@ cache_vol = modal.Volume.from_name(CACHE_VOL_NAME, create_if_missing=True)
 # API image for extracting stem binary
 api_image = (
     modal.Image.from_registry(
-        f"quay.io/deepgram/self-hosted-api:{DEEPGRAM_IMAGE_TAG}",
-        secret=modal.Secret.from_name(DEEPGRAM_SECRET_NAME),
+        f"quay.io/deepgram/self-hosted-api:{DEFAULT_DEEPGRAM_IMAGE_TAG}",
+        secret=modal.Secret.from_name("deepgram"),
         add_python="3.12",
     )
     .entrypoint([])
@@ -25,8 +31,8 @@ api_image = (
 # License proxy image for extracting hermes binary
 license_proxy_image = (
     modal.Image.from_registry(
-        f"quay.io/deepgram/self-hosted-license-proxy:{DEEPGRAM_IMAGE_TAG}",
-        secret=modal.Secret.from_name(DEEPGRAM_SECRET_NAME),
+        f"quay.io/deepgram/self-hosted-license-proxy:{DEFAULT_DEEPGRAM_IMAGE_TAG}",
+        secret=modal.Secret.from_name("deepgram"),
         add_python="3.12",
     )
     .entrypoint([])
@@ -34,7 +40,7 @@ license_proxy_image = (
 
 app = modal.App("prep-deepgram-resources")
 
-@app.cls(image=api_image, secrets=[modal.Secret.from_name(DEEPGRAM_SECRET_NAME)])
+@app.cls(image=api_image, secrets=[modal.Secret.from_name("deepgram")])
 class StemExtractor:
     """Extract stem binary from API image"""
     
@@ -45,7 +51,7 @@ class StemExtractor:
             return f.read()
 
 
-@app.cls(image=license_proxy_image, secrets=[modal.Secret.from_name(DEEPGRAM_SECRET_NAME)])
+@app.cls(image=license_proxy_image, secrets=[modal.Secret.from_name("deepgram")])
 class LicenseProxyExtractor:
     """Extract hermes binary from license proxy image"""
     
@@ -58,8 +64,8 @@ class LicenseProxyExtractor:
 # Use Engine image as base (has GPU/CUDA dependencies)
 engine_base_image = (
     modal.Image.from_registry(
-        f"quay.io/deepgram/self-hosted-engine:{DEEPGRAM_IMAGE_TAG}",
-        secret=modal.Secret.from_name(DEEPGRAM_SECRET_NAME),
+        f"quay.io/deepgram/self-hosted-engine:{DEFAULT_DEEPGRAM_IMAGE_TAG}",
+        secret=modal.Secret.from_name("deepgram"),
     )
     .uv_pip_install("fastapi[standard]", "httpx")
     .entrypoint([])
@@ -166,7 +172,7 @@ def download_model(
     volumes={
         "/mnt/cache": cache_vol,
     },
-    secrets=[modal.Secret.from_name(DEEPGRAM_SECRET_NAME)],
+    secrets=[modal.Secret.from_name("deepgram")],
 )
 def download_configs(
     label: str,
@@ -243,26 +249,31 @@ def download_configs(
     # (e.g. hostname "engine", "license-proxy") which we replace with localhost.
     import re
 
+    # Upstream configs assume Engine listens on the API's port (8080) in its own
+    # container. In the single-container deployment we move Engine to ENGINE_PORT.
+    UPSTREAM_ENGINE_PORT = API_PORT
+    UPSTREAM_LP_HOST = f"https://license-proxy:{LICENSE_PROXY_PORT}"
+    LOCAL_LP_URL = f"https://localhost:{LICENSE_PROXY_PORT}"
+    UPSTREAM_SERVER_URL = (
+        f'server_url = ["{UPSTREAM_LP_HOST}", "https://license.deepgram.com"]'
+    )
+
     # --- api.toml ---
     api_toml_path = dest_path / "api.toml"
     if api_toml_path.exists():
         content = api_toml_path.read_text()
-        # Engine runs on localhost:8081 instead of a separate container on :8080
         content = re.sub(
-            r'url = "https://[^:]+:8080/v2"',
-            'url = "https://localhost:8081/v2"',
+            rf'url = "https://[^:]+:{UPSTREAM_ENGINE_PORT}/v2"',
+            f'url = "https://localhost:{ENGINE_PORT}/v2"',
             content,
         )
         if deploy_type == "standard":
             content = content.replace(
-                'server_url = ["https://license-proxy:8443", "https://license.deepgram.com"]',
+                UPSTREAM_SERVER_URL,
                 'server_url = ["https://license.deepgram.com"]',
             )
         elif deploy_type == "license-proxy":
-            content = content.replace(
-                "https://license-proxy:8443",
-                "https://localhost:8443",
-            )
+            content = content.replace(UPSTREAM_LP_HOST, LOCAL_LP_URL)
         api_toml_path.write_text(content)
         print("✓ Patched api.toml for single-container deployment")
 
@@ -273,19 +284,16 @@ def download_configs(
         content = (
             content
             .replace('host = "0.0.0.0"', 'host = "127.0.0.1"')
-            .replace("port = 8080", "port = 8081")
+            .replace(f"port = {UPSTREAM_ENGINE_PORT}", f"port = {ENGINE_PORT}")
             .replace('search_paths = ["/models"]', f'search_paths = ["/models/{label}"]')
         )
         if deploy_type == "standard":
             content = content.replace(
-                'server_url = ["https://license-proxy:8443", "https://license.deepgram.com"]',
+                UPSTREAM_SERVER_URL,
                 'server_url = ["https://license.deepgram.com"]',
             )
         elif deploy_type == "license-proxy":
-            content = content.replace(
-                "https://license-proxy:8443",
-                "https://localhost:8443",
-            )
+            content = content.replace(UPSTREAM_LP_HOST, LOCAL_LP_URL)
         engine_toml_path.write_text(content)
         print(f"✓ Patched engine.toml for single-container deployment (search_paths=/models/{label})")
 
@@ -293,15 +301,18 @@ def download_configs(
     lp_toml_path = dest_path / "license-proxy.toml"
     if lp_toml_path.exists():
         content = lp_toml_path.read_text()
-        # Bind to localhost (same container) and move status port off 8080 to avoid
-        # conflicting with the API which also listens on 8080.
+        # Bind to localhost (same container) and move the status port off API_PORT
+        # to avoid colliding with the API.
         content = (
             content
             .replace('host = "0.0.0.0"', 'host = "127.0.0.1"')
-            .replace("status_port = 8080", "status_port = 8089")
+            .replace(f"status_port = {API_PORT}", f"status_port = {LICENSE_PROXY_STATUS_PORT}")
         )
         lp_toml_path.write_text(content)
-        print("✓ Patched license-proxy.toml for single-container deployment (status_port=8089)")
+        print(
+            f"✓ Patched license-proxy.toml for single-container deployment "
+            f"(status_port={LICENSE_PROXY_STATUS_PORT})"
+        )
 
     cache_vol.commit()
     return results
