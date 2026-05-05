@@ -4,7 +4,7 @@ Single-file deployment of Deepgram self-hosted services on Modal.
 The deployment is parameterized by the `DEPLOY_LABEL` environment variable,
 which selects which set of configs (`/cache/configs/{label}/`) and models
 (`/models/{label}/`) on the Modal volumes the container loads at startup.
-The label also becomes the Modal app suffix (`deepgram-flash-{label}`), so
+The label also becomes the Modal app suffix (`deepgram-{label}`), so
 multiple labels can be deployed side by side without clobbering each other.
 
 Hardware (`GPU`, `CPU_COUNT`, `MEMORY`, `MIN_CONTAINERS`) is set to
@@ -55,7 +55,7 @@ if not DEPLOY_LABEL:
 models_vol = modal.Volume.from_name(MODELS_VOL_NAME, create_if_missing=True)
 cache_vol = modal.Volume.from_name(CACHE_VOL_NAME, create_if_missing=True)
 
-app = modal.App(f"deepgram-flash-{DEPLOY_LABEL}")
+app = modal.App(f"deepgram-{DEPLOY_LABEL}")
 
 MINUTES = 60
 
