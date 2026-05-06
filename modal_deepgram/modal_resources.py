@@ -18,6 +18,36 @@ models_vol = modal.Volume.from_name(MODELS_VOL_NAME, create_if_missing=True)
 
 MINUTES = 60
 
+# Env vars Deepgram requires for specific source engine configs (e.g. Aura-2
+# TTS variants). Persisted to /cache/configs/{label}/env.json during prep so
+# the runtime container can apply them on startup without baking them into
+# the image.
+#
+# CUDA_VISIBLE_DEVICES is "0,1" for every variant because each label gets its
+# own container with its own GPUs (devices always start at 0). Deepgram's
+# upstream docs show "2,3" for ES/polyglot only because their reference
+# compose file colocates multiple variants on a 4-GPU node.
+SOURCE_ENGINE_CONFIG_TO_ENV: dict[str, dict[str, str]] = {
+    "engine.aura-2-en.toml": {
+        "IMPELLER_AURA2_T2C_UUID": "15ef8614-52cb-4cd3-a641-d68249c15d53",
+        "IMPELLER_AURA2_C2A_UUID": "2e5096c7-7bf1-435e-bbdd-f673f88d0ebd",
+        "IMPELLER_AURA2_MAX_BATCH_SIZE": "8",
+        "CUDA_VISIBLE_DEVICES": "0,1",
+    },
+    "engine.aura-2-es.toml": {
+        "IMPELLER_AURA2_T2C_UUID": "5d53d105-c6a4-47f5-b670-61adb6e8a880",
+        "IMPELLER_AURA2_C2A_UUID": "4d5c93ad-9e20-4ebf-a1f0-0fb88ac73ef5",
+        "IMPELLER_AURA2_MAX_BATCH_SIZE": "8",
+        "CUDA_VISIBLE_DEVICES": "0,1",
+    },
+    "engine.aura-2-polyglot.toml": {
+        "IMPELLER_AURA2_T2C_UUID": "04975889-c601-4f80-a02f-0f2f9c22deaf",
+        "IMPELLER_AURA2_C2A_UUID": "9e94567e-11e7-4619-adbc-d28212194367",
+        "IMPELLER_AURA2_MAX_BATCH_SIZE": "8",
+        "CUDA_VISIBLE_DEVICES": "0,1",
+    },
+}
+
 
 @app.function(
     volumes={
@@ -294,6 +324,18 @@ def download_configs(
             f"✓ Patched license-proxy.toml for single-container deployment "
             f"(status_port={LICENSE_PROXY_STATUS_PORT})"
         )
+
+    # Persist any source-engine-specific env vars so the runtime container
+    # can apply them on startup. Only (re)written when the engine config is
+    # being refreshed in this call, to avoid clobbering an existing env.json
+    # during an api-only refresh.
+    if engine_config_file:
+        import json
+
+        env_for_engine = SOURCE_ENGINE_CONFIG_TO_ENV.get(engine_config_file, {})
+        env_path = dest_path / "env.json"
+        env_path.write_text(json.dumps(env_for_engine, indent=2))
+        print(f"✓ Wrote env.json ({len(env_for_engine)} vars) for {engine_config_file}")
 
     cache_vol.commit()
     return results

@@ -150,6 +150,25 @@ class DeepgramServerBase:
             os.chmod(dst, 0o755)
             print(f"   ✅ {name} binary ready")
 
+    def _apply_env(self):
+        """Apply env vars persisted by prep (e.g. Aura-2 TTS UUIDs).
+
+        See modal_resources.SOURCE_ENGINE_CONFIG_TO_ENV for the source-config
+        → env mapping. Subprocesses spawned below inherit these via os.environ.
+        """
+        import json
+        env_path = f"{self.config_dir}/env.json"
+        if not os.path.exists(env_path):
+            print(f"   (no env.json at {env_path}; skipping)")
+            return
+        with open(env_path) as f:
+            env = json.load(f)
+        if not env:
+            print("   (env.json is empty; nothing to apply)")
+            return
+        os.environ.update(env)
+        print(f"   ✅ Applied {len(env)} env var(s): {', '.join(env)}")
+
     @staticmethod
     def _stream_logs(process, label):
         for line in process.stdout:
@@ -206,12 +225,16 @@ class DeepgramServerBase:
     @modal.enter()
     def start_deepgram(self):
         has_lp = self._has_license_proxy
-        total = 5 + (1 if has_lp else 0)
+        total = 6 + (1 if has_lp else 0)
         step = 0
 
         print("=" * 80)
         print("🚀 Starting Deepgram All-in-One Service")
         print("=" * 80)
+
+        step += 1
+        print(f"\n[Step {step}/{total}] Applying env vars from prep...")
+        self._apply_env()
 
         step += 1
         print(f"\n[Step {step}/{total}] Setting up binaries...")
