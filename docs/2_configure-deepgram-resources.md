@@ -12,7 +12,7 @@ export DEPLOY_LABEL=stt
 These resources are stored on Modal Volumes when you run
 
 ```bash
-modal run -m modal_deepgram.modal_resources \
+modal run -m modal_deepgram.deepgram_resources \
   --label $DEPLOY_LABEL \
   --model-links-path <path-to-models-list-txt-file> \
   --deploy-type license-proxy \
@@ -27,14 +27,14 @@ This will
   - to use `localhost` with the desired ports 
   - specify the Modal Volume mount point for model weights
 
-When calling `modal run -m modal_deepgram.modal_resources`, note that
+When calling `modal run -m modal_deepgram.deepgram_resources`, note that
 - the models `.txt` filepath should be local
 - the config file names should match one of those found in the [Deepgram self-hosted resources repo](https://github.com/deepgram/self-hosted-resources/tree/main/common)
 - the `--deploy-type` argument takes either `license-proxy` or `standard` and will choose the appropriate directory to pull the configs (default is `license-proxy`)
 
 ### Edit a Deepgram TOML config
 
-Update config files for a deployment after the initial `modal_deepgram.modal_resources` run by pulling them from the Volume, editing, and uploading back to the Volume.
+Update config files for a deployment after the initial `modal_deepgram.deepgram_resources` run by pulling them from the Volume, editing, and uploading back to the Volume.
 
 1. Pull the file locally:
 
@@ -57,7 +57,7 @@ Update config files for a deployment after the initial `modal_deepgram.modal_res
 Passing `--model-links-path` wipes `/models/{label}/` and re-downloads every URL in the file.
 
 ```bash
-modal run -m modal_deepgram.modal_resources \
+modal run -m modal_deepgram.deepgram_resources \
   --label stt \
   --model-links-path ./model-links.txt
 ```
@@ -73,7 +73,7 @@ The end-to-end flow for an Aura-2 TTS deployment:
    ```bash
    export DEPLOY_LABEL=tts
 
-   modal run -m modal_deepgram.modal_resources \
+   modal run -m modal_deepgram.deepgram_resources \
      --label $DEPLOY_LABEL \
      --model-links-path ./tts-model-links.txt \
      --source-api-config-file api.aura-2-polyglot.toml \

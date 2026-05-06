@@ -57,7 +57,7 @@ Get an STT deployment up and running:
 6. Download Deepgram configs and model weights to Modal Volumes. This command will download the most recent configs from the Deepgram self-hosted-resources repo and patch them to communicate over `localhost` using the correct ports
 
    ```bash
-   modal run -m modal_deepgram.modal_resources \
+   modal run -m modal_deepgram.deepgram_resources \
      --label $DEPLOY_LABEL \
      --model-links-path ./model-links.txt \
      --source-api-config-file api.toml \

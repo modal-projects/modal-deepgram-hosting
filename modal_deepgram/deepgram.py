@@ -53,7 +53,7 @@ engine_base_image = (
 
 # Modal app for the prep workflow. The extractor classes and binary-extraction
 # functions below register on this app, as do the volume / config / model
-# helpers in `modal_resources.py` (which imports `app` from here).
+# helpers in `deepgram_resources.py` (which imports `app` from here).
 app = modal.App("prep-deepgram-resources")
 
 cache_vol = modal.Volume.from_name(CACHE_VOL_NAME, create_if_missing=True)
@@ -153,7 +153,7 @@ class DeepgramServerBase:
     def _apply_env(self):
         """Apply env vars persisted by prep (e.g. Aura-2 TTS UUIDs).
 
-        See modal_resources.SOURCE_ENGINE_CONFIG_TO_ENV for the source-config
+        See deepgram_resources.SOURCE_ENGINE_CONFIG_TO_ENV for the source-config
         → env mapping. Subprocesses spawned below inherit these via os.environ.
         """
         import json
