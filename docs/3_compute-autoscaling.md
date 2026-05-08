@@ -32,6 +32,8 @@ SERVER_REGIONS = ["us-west"]
 )
 @modal.concurrent(target_inputs=TARGET_INPUTS)
 @modal.experimental.http_server(..., proxy_regions=[PROXY_REGION])
+class DeepgramServer(DeepgramServerBase):
+    ...
 ```
 
 ## Configure hardware
