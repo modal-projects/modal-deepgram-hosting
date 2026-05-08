@@ -21,22 +21,24 @@ TARGET_INPUTS = 64
 # region selection
 PROXY_REGION = "us-west"
 SERVER_REGIONS = ["us-west"]
+
+@app.cls(
+    ...,
+    gpu=GPU,
+    cpu=CPU_COUNT,
+    memory=MEMORY,
+    min_containers=MIN_CONTAINERS,
+    region=SERVER_REGIONS,
+)
+@modal.concurrent(target_inputs=TARGET_INPUTS)
+@modal.experimental.http_server(..., proxy_regions=[PROXY_REGION])
 ```
 
 ## Configure hardware
 
-Hardware is set as literals at the top of `modal_deepgram/app.py`, sized for STT (Nova family). Edit them per workload, then redeploy.
+For Deepgram's hardware minimums, see [Deployment Environments → Engine](https://developers.deepgram.com/docs/self-hosted-deployment-environments#engine). 
 
-For TTS (Aura-2), use two GPUs — one for the generative model, one for the vocoder:
-
-```python
-# modal_deepgram/app.py
-GPU = "L4:2"
-CPU_COUNT = 8
-MEMORY = 64 * 1024
-```
-
-For Deepgram's hardware minimums, see [Deployment Environments → Engine](https://developers.deepgram.com/docs/self-hosted-deployment-environments#engine). For Modal's GPU options, see [Modal: GPU](https://modal.com/docs/guide/gpu).
+For Modal's GPU options, see [Modal: GPU](https://modal.com/docs/guide/gpu).
 
 ## Configure autoscaling
 
