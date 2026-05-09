@@ -30,21 +30,6 @@ from .shared import (
     MODELS_VOL_NAME,
 )
 
-# compute resources
-GPU = "L4"
-CPU_COUNT = 4
-MEMORY = 32 * 1024  # MB
-
-# autoscaling
-MIN_CONTAINERS = 1
-
-# concurrency
-TARGET_INPUTS = 64
-
-# region selection
-PROXY_REGION = "us-west"
-SERVER_REGIONS = ["us-west"]
-
 DEPLOY_LABEL = os.environ.get("DEPLOY_LABEL")
 if not DEPLOY_LABEL:
     raise RuntimeError(
@@ -65,16 +50,16 @@ MINUTES = 60
         MODELS_PATH: models_vol,
         CACHE_PATH: cache_vol,
     },
-    gpu=GPU,
+    gpu="L4",
     secrets=[modal.Secret.from_name("deepgram")],
     timeout=30 * MINUTES,
-    cpu=CPU_COUNT,
-    memory=MEMORY,
-    min_containers=MIN_CONTAINERS,
-    region=SERVER_REGIONS,
+    cpu=4,
+    memory=32 * 1024,  # MB
+    min_containers=1,
+    region="us-west",
 )
-@modal.concurrent(target_inputs=TARGET_INPUTS)
-@modal.experimental.http_server(port=API_PORT, proxy_regions=[PROXY_REGION])
+@modal.concurrent(target_inputs=64)
+@modal.experimental.http_server(port=API_PORT, proxy_regions=["us-west"])
 class DeepgramServer(DeepgramServerBase):
     """Deepgram self-hosted service via Modal's experimental HTTP server.
 

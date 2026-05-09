@@ -1,37 +1,28 @@
 # Compute and Autoscaling
 
-With Modal, hardware resources and autoscaling configuration are specified as code. For the parameters in this section, update values by editing the values in `app.py` and redeploy.
+With Modal, hardware resources and autoscaling configuration are specified as code. Update the paraameters in this section by editing the values in `app.py` and redeploying.
 
 When you clone the repo, the values are configured for an STT deployment in `us-west`.
 
 ```python
 # modal_deepgram/app.py
 
-# compute resources
-GPU = "L4"
-CPU_COUNT = 4
-MEMORY = 32 * 1024  # MB
-
-# autoscaling
-MIN_CONTAINERS = 1
-
-# concurrency
-TARGET_INPUTS = 64
-
-# region selection
-PROXY_REGION = "us-west"
-SERVER_REGIONS = ["us-west"]
-
 @app.cls(
-    ...,
-    gpu=GPU,
-    cpu=CPU_COUNT,
-    memory=MEMORY,
-    min_containers=MIN_CONTAINERS,
-    region=SERVER_REGIONS,
+    image=engine_base_image.env({"DEPLOY_LABEL": DEPLOY_LABEL}),
+    volumes={
+        MODELS_PATH: models_vol,
+        CACHE_PATH: cache_vol,
+    },
+    gpu="L4",
+    secrets=[modal.Secret.from_name("deepgram")],
+    timeout=30 * MINUTES,
+    cpu=4,
+    memory=32 * 1024,  # MB
+    min_containers=1,
+    region="us-west",
 )
-@modal.concurrent(target_inputs=TARGET_INPUTS)
-@modal.experimental.http_server(..., proxy_regions=[PROXY_REGION])
+@modal.concurrent(target_inputs=64)
+@modal.experimental.http_server(port=API_PORT, proxy_regions=["us-west"])
 class DeepgramServer(DeepgramServerBase):
     ...
 ```
