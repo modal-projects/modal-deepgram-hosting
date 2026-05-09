@@ -4,7 +4,15 @@
 
 Once you deploy Deepgram on Modal, clients can use the standard Deepgram REST and WebSocket APIs. Modal will handle autoscaling, load balancing, storing configurations and model weights, observability, and more. For information on Modal's features and SDK, check out their [documentation](https://modal.com/docs).
 
-## How the deployment is structured
+## Prerequisites
+
+In order to deploy Deepgram on Modal, you’ll first need to have a self-hosted contract with Deepgram.
+
+Once you have access to self-hosted in the [Deepgram Console](https://console.deepgram.com/), you’ll be able to generate an API key and Distribution Credentials, used during the deployment. The Distribution Credentials are used to authenticate to the Deepgram container image registry, with the environment variables specified below.
+
+Additionally, Deepgram will need to generate unique model file links for your contracted Deepgram project ID. Please ask your Account Executive for access to the required Deepgram model weights files for the products you need to deploy, such as Nova-3, Aura-2, and Flux. Please be sure to specify which languages you need for each product as well, and if you intend to use the HTTP or WebSocket streaming APIs.
+
+## Deployment Structure
 
 - All Deepgram [components (Engine, API, Licence Proxy)](https://developers.deepgram.com/docs/self-hosted-introduction#components) run in a single Modal container and communicate over `localhost`.
 - The API is exposed publicly using Modal's `http_server` decorator and routed to containers via a low-latency, regional proxy.
@@ -12,7 +20,7 @@ Once you deploy Deepgram on Modal, clients can use the standard Deepgram REST an
 
 The reference repository ([modal-deepgram-hosting](https://github.com/deepgram/modal-deepgram-hosting)) ships a single deployment module that can be configured to serve STT, TTS, or Flux.
 
-## Quickstart (STT)
+## Quickstart: Speech-to-Text
 
 Get an STT deployment up and running:
 
