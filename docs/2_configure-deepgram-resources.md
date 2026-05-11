@@ -1,4 +1,4 @@
-# Configure a Deepgram Modal Deployment
+# Configure Deepgram on Modal
 
 ## Configure Deepgram
 
@@ -62,9 +62,9 @@ modal run -m modal_deepgram.deepgram_resources \
   --model-links-path ./model-links.txt
 ```
 
-## TTS deployment example
+## Example
 
-The end-to-end flow for an Aura-2 TTS deployment:
+The [quickstart](http://deepgram.com/docs/deploy-deepgram-on-modal) shows you how to deploy a STT service. If you wanted to deploy Aura-2 TTS instead, you would follow these steps:
 
 1. Save your Aura-2 model links to `./tts-model-links.txt`.
 
