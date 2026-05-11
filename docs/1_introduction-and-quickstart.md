@@ -1,8 +1,8 @@
 # Deepgram on Modal
 
-[Modal](https://modal.com) is an AI infrastructure platform that makes it easy to serve scalable, GPU-powered workloads in the cloud. This guide walks through deploying Deepgram as a Modal app.
+[Modal](https://modal.com) is an AI infrastructure platform for serving scalable, GPU-powered workloads in the cloud. This guide walks through deploying Deepgram as a Modal app.
 
-With Modal, you get serverless GPUs, global compute access for low-latency deployments, and built-in autoscaling & load balancing. Modal also enables you to customize and manage your Deepgram deployments via a programmatic interface rather than in complex UIs and config files. For information on Modal's features and SDK, check out their [documentation](https://modal.com/docs).
+With Modal, you get serverless GPUs, global compute access for low-latency deployments, and built-in autoscaling & load balancing. Modal's SDK makes it easy to programmatically define infrastructure for your deployments. For information on Modal's features and SDK, check out their [documentation](https://modal.com/docs).
 
 Once you deploy Deepgram on Modal, clients can use the standard Deepgram REST and WebSocket APIs.
 
