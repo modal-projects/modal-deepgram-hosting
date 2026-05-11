@@ -1,6 +1,6 @@
-# Compute and Autoscaling
+# Configure Modal Resources
 
-With Modal, hardware resources and autoscaling configuration are specified as code. Update the paraameters in this section by editing the values in `app.py` and redeploying.
+With Modal, hardware resources and autoscaling configuration are specified alongside your application code. Update the paraameters in this section by editing the values in `app.py` and redeploying.
 
 When you clone the repo, the values are configured for an STT deployment in `us-west`.
 
@@ -44,10 +44,10 @@ See their [Scaling Out guide](https://modal.com/docs/guide/scale) and [Input Con
 
 > Web endpoints served with the `http_server` only accept a value for `target_inputs` and not `max_inputs`.
 
-## Region Selection
+## Configure regions
 
-To optimize network latency, most Deepgram deployments will set the `PROXY_REGION` AND `SERVER_REGION` and route traffic from clients in those regions to that deployment.
+To optimize network latency, you will likely want to set the `PROXY_REGION` AND `SERVER_REGION` and route traffic from clients in those regions to that deployment.
 
-`PROXY_REGION` specifies the location of the Modal proxy that routes requests to containers. It can take one of four values: `us-east`, `us-west`, `eu-west`, `ap-south`.
+- `PROXY_REGION` specifies the location of the Modal proxy that routes requests to containers. It can take one of four values: `us-east`, `us-west`, `eu-west`, `ap-south`.
 
-`SERVER_REGION` specifies which region(s) the server containers can reside in. See the Modal [Region Selection doc](https://modal.com/docs/guide/region-selection) for more information.
+- `SERVER_REGION` specifies which region(s) the server containers can reside in. See the Modal [Region Selection doc](https://modal.com/docs/guide/region-selection) for more information.

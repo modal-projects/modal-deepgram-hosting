@@ -1,8 +1,10 @@
 # Deepgram on Modal
 
-[Modal](https://modal.com) is a serverless infrastructure platform that makes it easy to serve GPU powered workloads in the cloud. This guide walks through deploying Deepgram as a Modal app. 
+[Modal](https://modal.com) is an AI infrastructure platform for serving scalable, GPU-powered workloads in the cloud. This guide walks through deploying Deepgram as a Modal app.
 
-Once you deploy Deepgram on Modal, clients can use the standard Deepgram REST and WebSocket APIs. Modal will handle autoscaling, load balancing, storing configurations and model weights, observability, and more. For information on Modal's features and SDK, check out their [documentation](https://modal.com/docs).
+With Modal, you get serverless GPUs, global compute access for low-latency deployments, and built-in autoscaling & load balancing. Modal's SDK makes it easy to programmatically define infrastructure for your deployments. For information on Modal's features and SDK, check out their [documentation](https://modal.com/docs).
+
+Once you deploy Deepgram on Modal, clients can use the standard Deepgram REST and WebSocket APIs.
 
 ## Prerequisites
 
@@ -31,7 +33,7 @@ Get an STT deployment up and running:
    modal setup
    ```
 
-2. Create the `deepgram` Modal Secret with your `DEEPGRAM_API_KEY`, `REGISTRY_USERNAME`, and `REGISTRY_PASSWORD`. You can use the CLI or the Secrets tab of your Modal workspace dashboard.
+2. Create the `deepgram` Modal Secret with your `DEEPGRAM_API_KEY`, `REGISTRY_USERNAME`, and `REGISTRY_PASSWORD`. You can use the CLI or the [Secrets tab](https://modal.com/secrets) of your Modal workspace dashboard.
 
    ```bash
    modal secret create deepgram \
