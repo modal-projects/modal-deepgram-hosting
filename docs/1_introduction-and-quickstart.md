@@ -20,65 +20,53 @@ Additionally, Deepgram will need to generate unique model file links for your co
 - The API is exposed publicly using Modal's `http_server` decorator and routed to containers via a low-latency, regional proxy.
 - Model weights and Deepgram TOML configs live on Modal Volumes: a fast, remote data store.
 
-The reference repository ([modal-deepgram-hosting](https://github.com/deepgram/modal-deepgram-hosting)) ships a single deployment module that can be configured to serve STT, TTS, or Flux.
+The reference repository ([modal-deepgram-hosting](https://github.com/modal-projects/modal-deepgram-hosting)) ships a single deployment module that can be configured to serve STT, TTS, or Flux.
 
 ## Quickstart: Speech-to-Text
 
 Get an STT deployment up and running:
 
 1. Create a [Modal account](https://modal.com/signup), install the Modal CLI, and authenticate.
-
-   ```bash
+  ```bash
    pip install modal
    modal setup
-   ```
-
+  ```
 2. Create the `deepgram` Modal Secret with your `DEEPGRAM_API_KEY`, `REGISTRY_USERNAME`, and `REGISTRY_PASSWORD`. You can use the CLI or the [Secrets tab](https://modal.com/secrets) of your Modal workspace dashboard.
-
-   ```bash
+  ```bash
    modal secret create deepgram \
      DEEPGRAM_API_KEY=<your-api-key> \
      REGISTRY_USERNAME=<your-quay-username> \
      REGISTRY_PASSWORD=<your-quay-password>
-   ```
-
+  ```
 3. Clone the reference repository.
-
-   ```bash
+  ```bash
    git clone https://github.com/modal-projects/modal-deepgram-hosting.git
    cd modal-deepgram-hosting
-   ```
-
-4. Save your Deepgram STT model download links (provided by Deepgram) to `./model-links.txt`.
-    ```text
+  ```
+4. Save your Deepgram STT model download links (provided by Deepgram) to a `.txt` file, e.g. `model-links.txt`, and note the path.
+  ```text
     https://LINK_TO_MODEL_1.dg
     https://LINK_TO_MODEL_2.dg
     https://LINK_TO_MODEL_3.dg
     ...
     https://LINK_TO_MODEL_N.dg
-    ```
-
+  ```
 5. Set the label for this configuration using the `DEPLOY_LABEL` environment variable.
-
-   ```bash
+  ```bash
    export DEPLOY_LABEL=stt
-   ```
-
-6. Download Deepgram configs and model weights to Modal Volumes. This command will download the most recent configs from the Deepgram self-hosted-resources repo and patch them to communicate over `localhost` using the correct ports
-
-   ```bash
+  ```
+6. Download Deepgram configs and model weights to Modal Volumes. This command will download the most recent configs from the Deepgram self-hosted-resources repo and patch them to communicate over `localhost` using the correct ports.
+  ```bash
    modal run -m modal_deepgram.deepgram_resources \
      --label $DEPLOY_LABEL \
-     --model-links-path ./model-links.txt \
+     --model-links-path /path/to/model-links.txt \
      --source-api-config-file api.toml \
      --source-engine-config-file engine.toml
-   ```
-
-6. Deploy the Modal app.
-
-    ```bash
+  ```
+7. Deploy the Modal app.
+  ```bash
    modal deploy -m modal_deepgram.app
-   ```
+  ```
 
 ## Testing the deployment
 
@@ -137,10 +125,10 @@ To use a Deepgram SDK, point the client at the Modal URL by overriding the base 
 
 #### Streaming Inference
 
-The reference repository ships a working WebSocket client at `test/load_test_websocket_modal.py`. It streams a WAV file at real-time pace and is the fastest way to validate streaming end to end.
+The reference repository ships a working WebSocket client at `test/test_websocket.py`. It streams a WAV file at real-time pace and is the fastest way to validate streaming end to end.
 
 ```bash
-modal run test/load_test_websocket_modal.py \
-  --url wss://{your-modal-url}/v1/listen \
-  --file path/to/audio.wav
+python test/test_websocket.py \
+  --url wss://{your-modal-url}/v1/listen
 ```
+

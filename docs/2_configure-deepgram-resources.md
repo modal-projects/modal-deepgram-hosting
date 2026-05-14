@@ -54,7 +54,7 @@ Update config files for a deployment after the initial `modal_deepgram.deepgram_
 
 ### Update models
 
-Passing `--model-links-path` wipes `/models/{label}/` and re-downloads every URL in the file.
+Passing `--model-links-path` when you run `modal_deepgram.deepgram_resources` wipes `/models/{label}/` and downloads every URL in the file.
 
 ```bash
 modal run -m modal_deepgram.deepgram_resources \
