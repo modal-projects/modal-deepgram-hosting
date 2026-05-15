@@ -39,11 +39,9 @@ Modal automatically scales the number of Deepgram containers up and down based o
 
 See their [Scaling Out guide](https://modal.com/docs/guide/scale) and [Input Conccurrency guide](https://modal.com/docs/guide/concurrent-inputs) for the different parameters and their functionality. Note that not all available parameters are surfaced in `app.py`.
 
-### Notes
+<Info>Deepgram recommends keeping at least one container active to ensure that lulls in traffic don't lead to queuing or 503s when scaling back up from zero. In Modal, set `min_containers = 1`.</Info>
 
-Deepgram recommends keeping at least one container active to ensure that lulls in traffic don't lead to queuing or 503s when scaling back up from zero. In Modal, set `min_containers = 1`.
-
-Web endpoints served with the `http_server` only accept a value for `target_inputs` and not `max_inputs`. This number should be set slightly below the active request limit in your `engine.toml` file (see [Auto-Scaling: Enforcing Limits](https://deepgram-preview-d6057290-1e55-43b9-8ea3-04ee19987964.docs.buildwithfern.com/docs/autoscaling-best-practices#enforcing-limits)).
+<Info>Web endpoints served with the `http_server` only accept a value for `target_inputs` and not `max_inputs`. This number should be set slightly below the active request limit in your `engine.toml` file (see [Auto-Scaling: Enforcing Limits](https://deepgram-preview-d6057290-1e55-43b9-8ea3-04ee19987964.docs.buildwithfern.com/docs/autoscaling-best-practices#enforcing-limits)).</Info>
 
 ## Configure regions
 
